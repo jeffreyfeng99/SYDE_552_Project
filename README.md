@@ -1,30 +1,10 @@
 # Visual-Explanations-from-Spiking-Neural-Networks-using-Interspike-Intervals
-Kim, Y. & Panda, P., Visual explanations from spiking neural networks using inter-spike intervals. Sci Rep 11, 19037 (2021). https://doi.org/10.1038/s41598-021-98448-0
-
-
-## Prerequisites
-* Python 3.9    
-* PyTorch 1.10.0     
-* NVIDIA GPU (>= 12GB)      
-* CUDA 10.2 (optional)         
-
-## Getting Started
-
-### Conda Environment Setting
-```
-conda create -n VisualExp 
-conda activate VisualExp
-conda install pytorch torchvision torchaudio cudatoolkit=10.2 -c pytorch
-```
-
-## Training and testing
-
+Kim, Y. & Panda, P., Visual explanations from spiking neural networks using inter-spike intervals. Sci Rep 11, 19037 (2021). https://doi.org/10.1038/s41598-021-98448-0    
 
 ### Training
 
 *  Download tinyimagenet dataset to ```PATH/TO/DATASET```  
 *  Train a model using BNTT (https://github.com/Intelligent-Computing-Lab-Yale/BNTT-Batch-Normalization-Through-Time).
-
 
 ### Testing (on pretrained model)
 
@@ -49,17 +29,4 @@ python main.py --pretrainedmodel_pth 'PATH/TO/MODEL' --dataset_pth 'PATH/TO/DATA
 img_nums = [10, 52]
 ```
 
-
-## Citation
- 
-Please consider citing our paper:
- ```
-@article{kim2021visual,
-  title={Visual explanations from spiking neural networks using interspike intervals},
-  author={Kim, Youngeun and Panda, Priyadarshini},
-  journal={arXiv preprint arXiv:2103.14441},
-  year={2021}
- ```
- 
- 
 
