@@ -14,6 +14,14 @@ from json import load
 from model import *
 from utils import *
 
+class AddGaussianNoise(object):
+    def __init__(self, mean=0., std=1.):
+        self.std = std
+        self.mean = mean
+        
+    def __call__(self, tensor):
+        return tensor + torch.randn(tensor.size()) * self.std + self.mean
+
 class CustomDataset(data.Dataset):
     def __init__(self, data_root, transform=None):
         self.root = data_root
@@ -112,19 +120,20 @@ if __name__ == '__main__':
         cam = cam.reshape(h, w)
         cam = cam - np.min(cam)
         cam_img = cam / (np.max(cam) +1e-3)
-        return [cam_img]
+        return cam_img
 
     def getForwardCAM(feature_conv):
         cam = feature_conv.sum(axis =0).sum(axis =0)
         cam = cam - np.min(cam)
         cam_img = cam / (np.max(cam) +1e-3)
-        return [cam_img]
+        return cam_img
 
     cam_dict = {}
 
     img_idx = 0
     
     classification_accuracy_tracker = AverageMeter()
+    localization_tracker = LocalizationMeter()
 
     for j, data in enumerate(tqdm(val_loader)):
         if args.limit_output is True:
@@ -170,11 +179,11 @@ if __name__ == '__main__':
             weighted_activation = weight.cuda() * activation
             weighted_activation = weighted_activation.data.cpu().numpy()
             overlay = getForwardCAM(weighted_activation)
-            overlay_list.append(overlay[0])
+            overlay_list.append(overlay)
 
             if j in img_nums:
                 if process%3 == 0:
-                    sam = (np.array(1.-overlay[0])*255).astype('uint8')
+                    sam = (np.array(1.-overlay)*255).astype('uint8')
                     sam = cv2.resize(sam, dsize=(visual_imagesize, visual_imagesize))
                     sam = cv2.applyColorMap(sam, cv2.COLORMAP_JET)
                     blended = cv2.addWeighted(original, 0.5, sam, 0.5, 0.0)
@@ -186,7 +195,10 @@ if __name__ == '__main__':
             process += 1
             time += 1
 
+        error, index = localization_error(overlay_list, overlay_list[-5])
+        localization_tracker.update(error,paths,index)
         cam_dict[j] = overlay_list
         img_idx +=1
 
+    localization_tracker.print_output()
     print(classification_accuracy_tracker)
