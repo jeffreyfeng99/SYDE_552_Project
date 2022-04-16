@@ -58,7 +58,7 @@ if __name__ == '__main__':
     parser.add_argument('--num_workers', default=1, type=int, help='number of workers')
     parser.add_argument('--gamma', default=0.5, type=float, help='float')
     parser.add_argument('--target_layer', default=8, type=int, help='target_layer [4, 6, 8] is available')
-    parser.add_argument('--output_pth',  default='./output', type=str, help='path for output directory')
+    parser.add_argument('--output_pth',  default='./output2', type=str, help='path for output directory')
     parser.add_argument('--limit_output',  action='store_true')
     parser.add_argument('--visual_imagesize', default=128, type=int)
     parser.add_argument('--dset_size', default=100, type=int)
@@ -158,8 +158,7 @@ if __name__ == '__main__':
             original = cv2.resize(original, dsize=(visual_imagesize, visual_imagesize))
             original = (original - np.min(original))/(np.max(original)-np.min(original))
             original = (np.array(original)*255).astype('uint8')
-            original_save = Image.fromarray(original)
-            original_save.save(os.path.join(output_path, 'original_%s.jpg' % j).replace('\\','/'))
+            cv2.imwrite(os.path.join(output_path, 'original_%s.jpg' % j).replace('\\','/'), cv2.cvtColor(original, cv2.COLOR_RGB2BGR))
 
         process = 0
         time = 0
@@ -187,10 +186,8 @@ if __name__ == '__main__':
                     sam = cv2.resize(sam, dsize=(visual_imagesize, visual_imagesize))
                     sam = cv2.applyColorMap(sam, cv2.COLORMAP_JET)
                     blended = cv2.addWeighted(original, 0.5, sam, 0.5, 0.0)
-                    sam = Image.fromarray(sam)
-                    sam.save(os.path.join(output_path, 'sam_%s_%s.jpg' % (j,process//3+1)).replace('\\','/'))
-                    blended = Image.fromarray(blended)
-                    blended.save(os.path.join(output_path, 'sam_overlay_%s_%s.jpg' % (j,process//3+1)).replace('\\','/'))
+                    cv2.imwrite(os.path.join(output_path, 'sam_%s_%s.jpg' % (j,process//3+1)).replace('\\','/'),  cv2.cvtColor(sam, cv2.COLOR_RGB2BGR))
+                    cv2.imwrite(os.path.join(output_path, 'sam_overlay_%s_%s.jpg' % (j,process//3+1)).replace('\\','/'), cv2.cvtColor(blended, cv2.COLOR_RGB2BGR))
 
             process += 1
             time += 1
