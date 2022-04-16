@@ -1,7 +1,5 @@
 import torch
 
-
-
 class AverageMeter(object):
     """
     Computes and stores the average and current value
@@ -20,7 +18,9 @@ class AverageMeter(object):
         self.sum += val * n
         self.count += n
         self.avg = self.sum / self.count
-
+    
+    def __str__(self):  
+        return "Accuracy: %s" % self.avg.cpu().numpy()[0]
 
 def accuracy(outp, target, topk=(1,)):
     """Computes the precision@k for the specified values of k"""
