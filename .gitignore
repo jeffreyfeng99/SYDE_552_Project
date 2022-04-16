@@ -1,2 +1,5 @@
 figuresave/
-tiny-imagenet-200/
+tiny-imagenet-200/test/
+tiny-imagenet-200/train/
+tiny-imagenet-200/val/
+output/
