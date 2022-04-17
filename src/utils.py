@@ -1,6 +1,7 @@
 import torch
 import numpy as np
 import pandas as pd
+import cv2
 
 class AverageMeter(object):
     """
@@ -40,7 +41,7 @@ def accuracy(outp, target, topk=(1,)):
             res.append(correct_k.mul_(100.0 / batch_size))
         return res
 
-def localization_error(sam_list, reference, eps=1e-8):
+def localization_error(sam_list, reference, save_image=None, eps=1e-8):
     errors = []
     for t in range(len(sam_list)):
         
@@ -50,6 +51,12 @@ def localization_error(sam_list, reference, eps=1e-8):
 
         error = -np.sum(reference*np.log(sam) + (1.-reference)*np.log(1.-sam))
         errors.append(error)
+    
+    if save_image is not None:
+        save_sam = sam[np.argmin(errors)]
+        save_sam = (np.array(1.-save_sam)*255).astype('uint8')
+        save_sam = cv2.resize(sam, dsize=(64, 64))
+        cv2.imwrite(save_image,  cv2.cvtColor(sam, cv2.COLOR_RGB2BGR))
 
     return np.min(errors), np.argmin(errors)
 
