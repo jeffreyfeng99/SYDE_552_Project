@@ -85,4 +85,28 @@ class LocalizationMeter(object):
     def print_output(self):
         for error, name, index in zip(self.errors, self.names, self.indices):
             print("Localization error for %s: %s at %s" % (name, error, index))
-        
+
+
+class AddGaussianNoise(object):
+    def __init__(self, mean=0., std=1.):
+        self.std = std
+        self.mean = mean
+
+    def __call__(self, tensor):
+        return tensor + torch.randn(tensor.size()) * self.std + self.mean
+
+
+def reshape_transform(tensor, height=14, width=14):
+    result = tensor[:, 1:, :].reshape(tensor.size(0),
+                                      height, width, tensor.size(2))
+
+    # Bring the channels to the first dimension, like in CNNs.
+    result = result.transpose(2, 3).transpose(1, 2)
+    return result
+
+
+def getForwardCAM(feature_conv):
+    cam = feature_conv.sum(axis =0).sum(axis =0)
+    cam = cam - np.min(cam)
+    cam_img = cam / (np.max(cam) +1e-3)
+    return cam_img
