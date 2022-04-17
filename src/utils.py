@@ -22,9 +22,8 @@ class AverageMeter(object):
         self.count += n
         self.avg = self.sum / self.count
     
-    def __str__(self):  
-        # FIX THIS - do a print_output function
-        return "Accuracy: %s" % self.avg
+    def print_output(self):  
+        print("Accuracy: %s" % self.avg.cpu().numpy()[0])
 
 def accuracy(outp, target, topk=(1,)):
     """Computes the precision@k for the specified values of k"""
@@ -45,7 +44,6 @@ def accuracy(outp, target, topk=(1,)):
 def localization_error(sam_list, reference, save_image=None, eps=1e-8):
     errors = []
 
-
     for t in range(len(sam_list)):
         
         sam = sam_list[t]
@@ -61,8 +59,11 @@ def localization_error(sam_list, reference, save_image=None, eps=1e-8):
         save_sam = sam_list[np.argmin(errors)]
         save_sam = (np.array(1.-save_sam)*255).astype('uint8')
         save_sam = cv2.resize(save_sam, dsize=(64, 64))
-        save_sam = cv2.applyColorMap(save_sam, cv2.COLORMAP_JET)
-        cv2.imwrite(save_image,  cv2.cvtColor(save_sam, cv2.COLOR_RGB2BGR))
+        cv2.imwrite(save_image,  save_sam)
+
+        # TODO: save blended here
+        # save_sam = cv2.applyColorMap(save_sam, cv2.COLORMAP_JET)
+        #cv2.imwrite(save_image,  save_sam) #cv2.cvtColor(save_sam, cv2.COLOR_RGB2BGR))
 
     return np.min(errors), np.argmin(errors)
 
@@ -75,11 +76,16 @@ class LocalizationMeter(object):
         self.errors = []
         self.names = []
         self.indices = []
+        self.sum = 0
+        self.count = 0
 
     def update(self, val, name, index):
         self.errors.append(val)
         self.names.append(name)
         self.indices.append(index)
+
+        self.sum += val
+        self.count += 1
     
     def export(self, output_file):
         df = pd.DataFrame()
@@ -89,8 +95,7 @@ class LocalizationMeter(object):
         df.to_csv(output_file, index=False)
     
     def print_output(self):
-        for error, name, index in zip(self.errors, self.names, self.indices):
-            print("Localization error for %s: %s at %s" % (name, error, index))
+        print(f"Mean localization error {self.sum/self.count}")
 
 
 class AddGaussianNoise(object):
@@ -98,8 +103,11 @@ class AddGaussianNoise(object):
         self.std = std
         self.mean = mean
 
-    def __call__(self, tensor):
-        return tensor + torch.randn(tensor.size()).cuda() * self.std + self.mean
+    def __call__(self, tensor, modifier=None):
+        if modifier is not None:
+            return tensor + (torch.randn(tensor.size()).cuda() * self.std + self.mean)*(modifier)
+        else:
+            return tensor + torch.randn(tensor.size()).cuda() * self.std + self.mean
 
 
 def reshape_transform(tensor, height=64, width=64):

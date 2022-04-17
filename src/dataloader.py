@@ -35,11 +35,17 @@ class CustomDataset(data.Dataset):
         return self.n_data
 
 
-def create_dataloader(dataset_path, dataset_size, batch_size, num_workers):
-    transform = transforms.Compose([
-                        transforms.ToTensor(),
-                        transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
-                    ])
+def create_dataloader(dataset_path, dataset_size, batch_size, num_workers, no_norm=False):
+
+    if no_norm:
+        transform = transforms.Compose([
+                            transforms.ToTensor()
+                        ])
+    else:
+        transform = transforms.Compose([
+                            transforms.ToTensor(),
+                            transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
+                        ])
     dataset = CustomDataset(dataset_path, transform=transform)
     dataset = Subset(dataset, torch.arange(dataset_size))
     data_loader = torch.utils.data.DataLoader(

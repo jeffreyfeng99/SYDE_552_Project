@@ -46,7 +46,9 @@ def main(args):
                        'clean_SAM_A', 'clean_SAM_B',
                        'clean_minerror_SAM_A', 'clean_minerror_SAM_B',
                        'attacked_SAM_1A', 'attacked_SAM_1B',
-                       'attacked_SAM_2A', 'attacked_SAM_2B']
+                       'attacked_minerror_SAM_1A', 'attacked_minerror_SAM_1B',
+                       'attacked_SAM_2A', 'attacked_SAM_2B',
+                       'attacked_minerror_SAM_2A', 'attacked_minerror_SAM_2B']
     for output_base in output_basedirs:
         output_dir = os.path.join(args.output_root, datetime.now().strftime("%m%d%Y"), output_base).replace('\\', '/')
         os.makedirs(output_dir, exist_ok=True)
@@ -247,9 +249,10 @@ def main(args):
 
         img_idx += 1
 
-    for n in range(len(models)):
+    for n, k in enumerate(overlay_list.keys()):
+        localization_trackers[n].export(os.path.join(output_dirs[f'clean_minerror_SAM_{k}'], 'localization_error.csv').replace('\\','/'))
         localization_trackers[n].print_output()
-        print(classification_accuracy_trackers[n])
+        classification_accuracy_trackers[n].print_output()
 
     # --------------------------------------------------
     # PASS #2: Add Gaussian noise to images
@@ -294,7 +297,7 @@ def main(args):
 
         # Compute classification accuracies
         for n in range(len(models)):
-            output = models[n](images, target_layer=target_layer)
+            output = models[n](images_noisy, target_layer=target_layer)
             classification_accuracy_trackers_2[n].update(accuracy(output, labels)[0])
 
         process = 0
@@ -342,28 +345,27 @@ def main(args):
             time += 1
 
         for n, k in enumerate(overlay_list_2.keys()):
-            error, index = localization_error(overlay_list_2[k], grayscale_cam)
-            localization_trackers[n].update(error, paths, index)
+            output_path = os.path.join(output_dirs[f'attacked_minerror_SAM_1{k}'], paths).replace('\\','/')
+            error, index = localization_error(overlay_list_2[k], grayscale_cam, save_image=output_path)
+            localization_trackers_2[n].update(error, paths, index)
 
         img_idx += 1
 
-    for n in range(len(models)):
+    for n, k in enumerate(overlay_list_2.keys()):
+        localization_trackers_2[n].export(os.path.join(output_dirs[f'attacked_minerror_SAM_1{k}'], 'localization_error.csv').replace('\\','/'))
         localization_trackers_2[n].print_output()
-        print(classification_accuracy_trackers_2[n])
+        classification_accuracy_trackers_2[n].print_output()
 
     # --------------------------------------------------
     # PASS #3: Add Gaussian noise to SAMs
     # --------------------------------------------------
-
-    # TODO need to select the SAM for each image with min localization error and create new directories
-    # as localization error updates, copy the corresponding SAM to new dataset dir
     del val_loader
+    val_loader = create_dataloader(dataset_path, len(img_nums), batch_size, num_workers)
 
     if flow == 'attack-sam' or flow == 'all':
         # Need to create a new dataloader for each clean SAM
-        # TODO change dataset paths below
-        SAM_1A_dataloader = create_dataloader(output_dirs['clean_minerror_SAM_A'], len(img_nums), batch_size, num_workers)
-        SAM_1B_dataloader = create_dataloader(output_dirs['clean_minerror_SAM_B'], len(img_nums), batch_size, num_workers)
+        SAM_1A_dataloader = create_dataloader(output_dirs['clean_minerror_SAM_A'], len(img_nums), batch_size, num_workers, no_norm=True)
+        SAM_1B_dataloader = create_dataloader(output_dirs['clean_minerror_SAM_B'], len(img_nums), batch_size, num_workers, no_norm=True)
         img_idx = 0
 
         classification_accuracy_tracker_3A = AverageMeter()
@@ -373,7 +375,7 @@ def main(args):
         localization_tracker_3B = LocalizationMeter()
         localization_trackers_3 = [localization_tracker_3A, localization_tracker_3B]
 
-        for j, (data_A, data_B) in enumerate(tqdm(zip(SAM_1A_dataloader,SAM_1B_dataloader))):
+        for j, (data, data_A, data_B) in enumerate(tqdm(zip(val_loader, SAM_1A_dataloader,SAM_1B_dataloader), total=len(SAM_1A_dataloader))):
             if args.limit_output is True:
                 if j > np.max(img_nums):
                     continue
@@ -385,16 +387,21 @@ def main(args):
                 model.module.saved_grad = 0
                 model.module.saved_forward = []
 
+            images, labels, paths = data
             images_A, labels_A, paths_A = data_A
             images_B, labels_B, paths_B = data_B
+            images = images.cuda()
             images_A = images_A.cuda()
             labels_A = labels_A.cuda()
             images_B = images_B.cuda()
             labels_B = labels_B.cuda()
 
             # Apply gaussian noise to images
-            images_noisy = [gaussian_noise(images_A), gaussian_noise(images_B)]
+            # images_noisy = [gaussian_noise(images)*images_A, gaussian_noise(images)*images_B]
+            images_noisy = [images*(1.-images_A),images*(1.-images_B)]
+            # images_noisy = [gaussian_noise(images,modifier=images_A), gaussian_noise(images,modifier=images_B)]
             labels = [labels_A, labels_B]
+            paths = [paths_A[0], paths_B[0]]
 
             # Save noisy SAMs
             numpy_noisy = []
@@ -459,14 +466,16 @@ def main(args):
                 time += 1
 
             for n, k in enumerate(overlay_list_3.keys()):
-                error, index = localization_error(overlay_list_3[k], grayscale_cam)
-                localization_trackers[n].update(error, paths, index)
+                output_path = os.path.join(output_dirs[f'attacked_minerror_SAM_2{k}'], paths[n]).replace('\\','/')
+                error, index = localization_error(overlay_list_3[k], grayscale_cam, save_image=output_path)
+                localization_trackers_3[n].update(error, paths[n], index)
 
             img_idx += 1
 
-        for n in range(len(models)):
+        for n, k in enumerate(overlay_list_3.keys()):
+            localization_trackers_3[n].export(os.path.join(output_dirs[f'attacked_minerror_SAM_2{k}'], 'localization_error.csv').replace('\\','/'))
             localization_trackers_3[n].print_output()
-            print(classification_accuracy_trackers_3[n])
+            classification_accuracy_trackers_3[n].print_output()
 
 
 if __name__ == '__main__':
@@ -476,7 +485,7 @@ if __name__ == '__main__':
                         type=str, help='multipass flow option')
     parser.add_argument('--dataset_pth', default='./tiny-imagenet-200/val/images',
                         type=str, help='path for validation dataset')
-    parser.add_argument('--output_root', default='./output_test',
+    parser.add_argument('--output_root', default='./output',
                         type=str, help='root for output SAM directories')
     # Run settings
     parser.add_argument('--batch_size', default=1, type=int, help='batch size should be 1')
