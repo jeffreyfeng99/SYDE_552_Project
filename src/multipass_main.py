@@ -1,4 +1,5 @@
 import argparse
+from matplotlib import image
 import numpy as np
 import random
 import os
@@ -28,8 +29,7 @@ def setup_gradcam():
     reference_target_layer = reference_model.features[-1]
     cam = GradCAM(model=reference_model,
                   target_layers=[reference_target_layer],
-                  use_cuda=True,
-                  reshape_transform=reshape_transform)
+                  use_cuda=True)
     return cam
 
 
@@ -44,6 +44,7 @@ def main(args):
     output_basedirs = ['original', 'gradcam',
                        'noisy', 'noisy_SAM_A', 'noisy_SAM_B',
                        'clean_SAM_A', 'clean_SAM_B',
+                       'clean_minerror_SAM_A', 'clean_minerror_SAM_B',
                        'attacked_SAM_1A', 'attacked_SAM_1B',
                        'attacked_SAM_2A', 'attacked_SAM_2B']
     for output_base in output_basedirs:
@@ -52,7 +53,7 @@ def main(args):
         output_dirs[output_base] = output_dir
 
     # select number of samples for visualization
-    img_nums = [10, 52] # list(range(100))
+    img_nums = list(range(20)) #[10, 52] 
 
     gamma = args.gamma
     num_timestep = args.timesteps
@@ -90,19 +91,24 @@ def main(args):
             images, _, paths = data
             images = images.cuda()
 
-            grayscale_cam = cam(input_tensor=images,
+            grayscale_cam = cam(input_tensor=transforms.functional.resize(images, 224),
                                 targets=None,
                                 aug_smooth=aug_smooth,
                                 eigen_smooth=eigen_smooth)
 
             if j in img_nums:
                 grayscale_cam = grayscale_cam[0, :]
-                gradcam_image = show_cam_on_image(images[0, ...], grayscale_cam, use_rgb=True)
+                grayscale_cam = cv2.resize(grayscale_cam, dsize=(64, 64))
+                np_img = images.cpu().numpy()[0]
+                np_img = np_img.transpose(1,2,0)
+                np_img = (np_img-np.min(np_img))/(np.max(np_img) - np.min(np_img))
+                gradcam_image = show_cam_on_image(np_img, grayscale_cam, use_rgb=True)
+                
                 # gradcam_image is RGB encoded whereas "cv2.imwrite" requires BGR encoding.
                 gradcam_image = cv2.cvtColor(gradcam_image, cv2.COLOR_RGB2BGR)
                 cam_image_path = os.path.join(output_dirs['gradcam'], f'gradcam_{j}.jpg').replace('\\', '/')
                 cv2.imwrite(cam_image_path, gradcam_image)
-
+    del cam
     #--------------------------------------------------
     # Instantiate both SNN models
     #--------------------------------------------------
@@ -174,6 +180,7 @@ def main(args):
         images, labels, paths = data
         images = images.cuda()
         labels = labels.cuda()
+        paths = paths[0]
 
         # Save original images
         if j in img_nums:
@@ -193,16 +200,16 @@ def main(args):
         time = 0
         overlay_list = {'A': [], 'B': []}
         previous_spike_time_list = {'A': [], 'B': []}
-        activation_list_values = (model_A.module.saved_forward, model_B.module.saved_forward)
 
-        for l, activation_A, activation_B in enumerate(activation_list_values):
+        for l, (activation_A, activation_B) in enumerate(zip(model_A.module.saved_forward, model_B.module.saved_forward)):
             previous_spike_time_list['A'].append(activation_A)
             previous_spike_time_list['B'].append(activation_B)
             weight = 0
-
-            for prev_t in range(len(previous_spike_time_list)):
-                delta_t = time - previous_spike_time_list[prev_t] * prev_t
-                weight += torch.exp(gamma * (-1) * delta_t)
+            
+            for k in previous_spike_time_list.keys():
+                for prev_t in range(len(previous_spike_time_list[k])):
+                    delta_t = time - previous_spike_time_list[k][prev_t] * prev_t
+                    weight += torch.exp(gamma * (-1) * delta_t)
 
             # Compute SAMs
             weighted_activation_A = weight.cuda() * activation_A
@@ -234,7 +241,8 @@ def main(args):
             time += 1
 
         for n, k in enumerate(overlay_list.keys()):
-            error, index = localization_error(overlay_list[k], grayscale_cam)
+            output_path = os.path.join(output_dirs[f'clean_minerror_SAM_{k}'], paths).replace('\\','/')
+            error, index = localization_error(overlay_list[k], grayscale_cam, save_image=output_path)
             localization_trackers[n].update(error, paths, index)
 
         img_idx += 1
@@ -270,6 +278,7 @@ def main(args):
         images, labels, paths = data
         images = images.cuda()
         labels = labels.cuda()
+        paths = paths[0]
 
         # Apply gaussian noise to images
         images_noisy = gaussian_noise(images)
@@ -286,22 +295,22 @@ def main(args):
         # Compute classification accuracies
         for n in range(len(models)):
             output = models[n](images, target_layer=target_layer)
-            classification_accuracy_trackers[n].update(accuracy(output, labels)[0])
+            classification_accuracy_trackers_2[n].update(accuracy(output, labels)[0])
 
         process = 0
         time = 0
         overlay_list_2 = {'A': [], 'B': []}
         previous_spike_time_list_2 = {'A': [], 'B': []}
-        activation_list_values_2 = (model_A.module.saved_forward, model_B.module.saved_forward)
 
-        for l, activation_A, activation_B in enumerate(activation_list_values_2):
+        for l, (activation_A, activation_B) in enumerate(zip(model_A.module.saved_forward, model_B.module.saved_forward)):
             previous_spike_time_list_2['A'].append(activation_A)
             previous_spike_time_list_2['B'].append(activation_B)
             weight = 0
 
-            for prev_t in range(len(previous_spike_time_list_2)):
-                delta_t = time - previous_spike_time_list_2[prev_t] * prev_t
-                weight += torch.exp(gamma * (-1) * delta_t)
+            for k in previous_spike_time_list_2.keys():
+                for prev_t in range(len(previous_spike_time_list_2[k])):
+                    delta_t = time - previous_spike_time_list_2[k][prev_t] * prev_t
+                    weight += torch.exp(gamma * (-1) * delta_t)
 
             # Compute attacked SAMs
             weighted_activation_A = weight.cuda() * activation_A
@@ -348,11 +357,13 @@ def main(args):
 
     # TODO need to select the SAM for each image with min localization error and create new directories
     # as localization error updates, copy the corresponding SAM to new dataset dir
+    del val_loader
+
     if flow == 'attack-sam' or flow == 'all':
         # Need to create a new dataloader for each clean SAM
         # TODO change dataset paths below
-        SAM_1A_dataloader = create_dataloader(output_dirs['clean_SAM_1A'], dataset_size, batch_size, num_workers)
-        SAM_1B_dataloader = create_dataloader(output_dirs['clean_SAM_1B'], dataset_size, batch_size, num_workers)
+        SAM_1A_dataloader = create_dataloader(output_dirs['clean_minerror_SAM_A'], len(img_nums), batch_size, num_workers)
+        SAM_1B_dataloader = create_dataloader(output_dirs['clean_minerror_SAM_B'], len(img_nums), batch_size, num_workers)
         img_idx = 0
 
         classification_accuracy_tracker_3A = AverageMeter()
@@ -386,6 +397,7 @@ def main(args):
             labels = [labels_A, labels_B]
 
             # Save noisy SAMs
+            numpy_noisy = []
             if j in img_nums:
                 for n in range(len(images_noisy)):
                     key = 'A' if n == 1 else 'B'
@@ -393,28 +405,29 @@ def main(args):
                     noisy = cv2.resize(noisy, dsize=(visual_imagesize, visual_imagesize))
                     noisy = (noisy - np.min(noisy)) / (np.max(noisy) - np.min(noisy))
                     noisy = (np.array(noisy) * 255).astype('uint8')
+                    numpy_noisy.append(noisy)
                     cv2.imwrite(os.path.join(output_dirs[f'noisy_SAM_{key}'], f'noisy_{j}.jpg').replace('\\', '/'),
                                 cv2.cvtColor(noisy, cv2.COLOR_RGB2BGR))
 
             # Compute classification accuracies
             for n in range(len(models)):
                 output = models[n](images_noisy[n], target_layer=target_layer)
-                classification_accuracy_trackers[n].update(accuracy(output, labels[n])[0])
+                classification_accuracy_trackers_3[n].update(accuracy(output, labels[n])[0])
 
             process = 0
             time = 0
             overlay_list_3 = {'A': [], 'B': []}
             previous_spike_time_list_3 = {'A': [], 'B': []}
-            activation_list_values_3 = (model_A.module.saved_forward, model_B.module.saved_forward)
 
-            for l, activation_A, activation_B in enumerate(activation_list_values_3):
+            for l, (activation_A, activation_B) in enumerate(zip(model_A.module.saved_forward, model_B.module.saved_forward)):
                 previous_spike_time_list_3['A'].append(activation_A)
                 previous_spike_time_list_3['B'].append(activation_B)
                 weight = 0
 
-                for prev_t in range(len(previous_spike_time_list_3)):
-                    delta_t = time - previous_spike_time_list_3[prev_t] * prev_t
-                    weight += torch.exp(gamma * (-1) * delta_t)
+                for k in previous_spike_time_list_3.keys():
+                    for prev_t in range(len(previous_spike_time_list_3[k])):
+                        delta_t = time - previous_spike_time_list_3[k][prev_t] * prev_t
+                        weight += torch.exp(gamma * (-1) * delta_t)
 
                 # Compute attacked SAMs
                 weighted_activation_A = weight.cuda() * activation_A
@@ -434,7 +447,7 @@ def main(args):
                             sam = (np.array(1. - overlay_list_3[k][-1]) * 255).astype('uint8')
                             sam = cv2.resize(sam, dsize=(visual_imagesize, visual_imagesize))
                             sam = cv2.applyColorMap(sam, cv2.COLORMAP_JET)
-                            blended = cv2.addWeighted(images_noisy[n], 0.5, sam, 0.5, 0.0)
+                            blended = cv2.addWeighted(numpy_noisy[n], 0.5, sam, 0.5, 0.0)
                             cv2.imwrite(
                                 os.path.join(output_dirs[f'attacked_SAM_2{k}'], f'sam_{j}_{process // 3 + 1}.jpg').replace('\\', '/'),
                                 cv2.cvtColor(sam, cv2.COLOR_RGB2BGR))
@@ -463,7 +476,7 @@ if __name__ == '__main__':
                         type=str, help='multipass flow option')
     parser.add_argument('--dataset_pth', default='./tiny-imagenet-200/val/images',
                         type=str, help='path for validation dataset')
-    parser.add_argument('--output_root', default='./output',
+    parser.add_argument('--output_root', default='./output_test',
                         type=str, help='root for output SAM directories')
     # Run settings
     parser.add_argument('--batch_size', default=1, type=int, help='batch size should be 1')
@@ -471,7 +484,7 @@ if __name__ == '__main__':
     parser.add_argument('--limit_output', action='store_true',
                         help='limits the number of images to pass')
     parser.add_argument('--visual_imagesize', default=128, type=int)
-    parser.add_argument('--dset_size', default=100, type=int)
+    parser.add_argument('--dataset_size', default=100, type=int)
     # SNN settings
     parser.add_argument('--pretrainedmodel_pth', default='./pretrained/pretrained_tiny_t30.pth.tar',
                         type=str, help='path for pretrained model')

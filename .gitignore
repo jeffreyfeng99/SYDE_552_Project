@@ -3,3 +3,4 @@ tiny-imagenet-200/test/
 tiny-imagenet-200/train/
 tiny-imagenet-200/val/
 output/
+src/__pycache__/

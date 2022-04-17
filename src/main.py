@@ -58,7 +58,7 @@ if __name__ == '__main__':
     parser.add_argument('--num_workers', default=1, type=int, help='number of workers')
     parser.add_argument('--gamma', default=0.5, type=float, help='float')
     parser.add_argument('--target_layer', default=8, type=int, help='target_layer [4, 6, 8] is available')
-    parser.add_argument('--output_pth',  default='./output2', type=str, help='path for output directory')
+    parser.add_argument('--output_pth',  default='./output', type=str, help='path for output directory')
     parser.add_argument('--limit_output',  action='store_true')
     parser.add_argument('--visual_imagesize', default=128, type=int)
     parser.add_argument('--dset_size', default=100, type=int)
@@ -127,10 +127,6 @@ if __name__ == '__main__':
         cam = cam - np.min(cam)
         cam_img = cam / (np.max(cam) +1e-3)
         return cam_img
-
-    cam_dict = {}
-
-    img_idx = 0
     
     classification_accuracy_tracker = AverageMeter()
     localization_tracker = LocalizationMeter()
@@ -149,6 +145,8 @@ if __name__ == '__main__':
         images, labels, paths = data
         images = images.cuda()
         labels = labels.cuda()
+
+        print(images.shape)
 
         output  = model(images, target_layer=target_layer)
         classification_accuracy_tracker.update(accuracy(output,labels)[0])
@@ -194,8 +192,6 @@ if __name__ == '__main__':
 
         error, index = localization_error(overlay_list, overlay_list[-5])
         localization_tracker.update(error,paths,index)
-        cam_dict[j] = overlay_list
-        img_idx +=1
 
     localization_tracker.print_output()
     print(classification_accuracy_tracker)

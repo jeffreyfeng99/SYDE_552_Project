@@ -23,7 +23,8 @@ class AverageMeter(object):
         self.avg = self.sum / self.count
     
     def __str__(self):  
-        return "Accuracy: %s" % self.avg.cpu().numpy()[0]
+        # FIX THIS - do a print_output function
+        return "Accuracy: %s" % self.avg
 
 def accuracy(outp, target, topk=(1,)):
     """Computes the precision@k for the specified values of k"""
@@ -43,20 +44,25 @@ def accuracy(outp, target, topk=(1,)):
 
 def localization_error(sam_list, reference, save_image=None, eps=1e-8):
     errors = []
+
+
     for t in range(len(sam_list)):
         
         sam = sam_list[t]
         sam[sam==1.] = 1.-eps
         sam[sam==0.] = eps
 
+        sam = cv2.resize(sam, dsize=(64, 64))
+
         error = -np.sum(reference*np.log(sam) + (1.-reference)*np.log(1.-sam))
         errors.append(error)
     
     if save_image is not None:
-        save_sam = sam[np.argmin(errors)]
+        save_sam = sam_list[np.argmin(errors)]
         save_sam = (np.array(1.-save_sam)*255).astype('uint8')
-        save_sam = cv2.resize(sam, dsize=(64, 64))
-        cv2.imwrite(save_image,  cv2.cvtColor(sam, cv2.COLOR_RGB2BGR))
+        save_sam = cv2.resize(save_sam, dsize=(64, 64))
+        save_sam = cv2.applyColorMap(save_sam, cv2.COLORMAP_JET)
+        cv2.imwrite(save_image,  cv2.cvtColor(save_sam, cv2.COLOR_RGB2BGR))
 
     return np.min(errors), np.argmin(errors)
 
@@ -93,15 +99,15 @@ class AddGaussianNoise(object):
         self.mean = mean
 
     def __call__(self, tensor):
-        return tensor + torch.randn(tensor.size()) * self.std + self.mean
+        return tensor + torch.randn(tensor.size()).cuda() * self.std + self.mean
 
 
-def reshape_transform(tensor, height=14, width=14):
-    result = tensor[:, 1:, :].reshape(tensor.size(0),
-                                      height, width, tensor.size(2))
+def reshape_transform(tensor, height=64, width=64):
+    # result = tensor[:, 1:, :].reshape(tensor.size(0),
+    #                                   height, width, tensor.size(2))
 
     # Bring the channels to the first dimension, like in CNNs.
-    result = result.transpose(2, 3).transpose(1, 2)
+    result = tensor.transpose(1, 2).transpose(2, 3)
     return result
 
 
