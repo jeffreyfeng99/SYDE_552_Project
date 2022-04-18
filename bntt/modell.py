@@ -36,8 +36,6 @@ def PoissonGen(inp, rescale_fac=2.0):
 
 
 
-
-
 class SNN_VGG9_BNTT(nn.Module):
     def __init__(self, num_steps, leak_mem=0.95, img_size=32,  num_cls=10):
         super(SNN_VGG9_BNTT, self).__init__()

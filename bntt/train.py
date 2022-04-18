@@ -169,7 +169,7 @@ if __name__ == '__main__':
         
 
         train_set = CustomDataset(args.train_path, transform=transform_train, train=True)
-        test_set = CustomDataset(args.test_path, transform=transform_test)
+        test_set = CustomDataset(args.val_path, transform=transform_test)
     else:
         print("not implemented yet..")
         exit()
