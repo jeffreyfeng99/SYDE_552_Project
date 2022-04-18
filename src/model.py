@@ -60,7 +60,13 @@ def init_spike_fn(grad_type):
 
 def PoissonGen(inp, rescale_fac=2.0):
     rand_inp = torch.rand_like(inp).cuda()
-    return torch.mul(torch.le(rand_inp * rescale_fac, torch.abs(inp)).float(), torch.sign(inp))
+
+    inp = (inp-torch.min(inp))/(torch.max(inp)-torch.min(inp))
+
+
+    return torch.le(rand_inp, inp).float()
+
+    # return torch.mul(torch.le(rand_inp * rescale_fac, torch.abs(inp)).float(), torch.sign(inp))
 
 
 class SNN_VGG11(nn.Module):

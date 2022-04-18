@@ -43,6 +43,25 @@ def create_val_class_dict():
                                    'w'),
          indent=2)
 
+def create_train_class_dict():
+    tiny_class_dict = load(open('./tiny-imagenet-200/class_dict.json', 'r'))
+    tiny_val_class_dict = {}
+
+    for root, dir, files in os.walk('./tiny-imagenet-200/train'):
+        for file in files:
+            if '.JPEG' in file:
+                image_class = file.split('_')[0]
+                tiny_val_class_dict[file] = {
+                    'class': tiny_class_dict[image_class]['class'],
+                    'index': tiny_class_dict[image_class]['index'],
+                }
+        
+    dump(tiny_val_class_dict, open('./tiny-imagenet-200/train_class_dict.json',
+                                   'w'),
+         indent=2)
+
+
 if __name__ == '__main__':
-    create_class_dict()
-    create_val_class_dict()
+    # create_class_dict()
+    # create_val_class_dict()
+    create_train_class_dict()

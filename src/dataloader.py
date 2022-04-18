@@ -10,12 +10,16 @@ import torch.utils.data as data
 from torch.utils.data import Subset
 
 class CustomDataset(data.Dataset):
-    def __init__(self, data_root, transform=None):
+    def __init__(self, data_root, transform=None, train=False):
         self.root = data_root
         self.transform = transform
 
         self.img_paths = [f for root, dirs, files in os.walk(data_root) for f in files if f.endswith('.JPEG')]
-        self.img_labels = load(open('./tiny-imagenet-200/val_class_dict.json', 'r'))
+        
+        if train:
+            self.img_labels = load(open('./tiny-imagenet-200/train_class_dict.json', 'r'))
+        else:
+            self.img_labels = load(open('./tiny-imagenet-200/val_class_dict.json', 'r'))
 
         self.n_data = len(self.img_paths)
 
