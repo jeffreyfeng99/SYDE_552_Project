@@ -47,9 +47,9 @@ class CustomDataset(data.Dataset):
                     self.full_paths.append(os.path.join(root,f).replace('\\','/'))
         
         if train:
-            self.img_labels = load(open('./tiny-imagenet-200/train_class_dict.json', 'r'))
+            self.img_labels = load(open(args.train_json_path, 'r'))
         else:
-            self.img_labels = load(open('./tiny-imagenet-200/val_class_dict.json', 'r'))
+            self.img_labels = load(open(args.val_json_path, 'r'))
 
         self.n_data = len(self.img_paths)
         print(self.n_data)
@@ -88,6 +88,8 @@ if __name__ == '__main__':
     parser.add_argument('--test_display_freq',     default=10, type=int, help='display_freq for test')
     parser.add_argument('--train_path',    default='./tiny-imagenet-200/train/', type=str, help='display_freq for train')
     parser.add_argument('--val_path',     default='./tiny-imagenet-200/val/images', type=str, help='display_freq for test')
+    parser.add_argument('--train_json_path',    default='./tiny-imagenet-200/train_class_dict.json', type=str, help='display_freq for train')
+    parser.add_argument('--val_json_path',     default='./tiny-imagenet-200/val_class_dict.json', type=str, help='display_freq for test')
 
 
     global args
