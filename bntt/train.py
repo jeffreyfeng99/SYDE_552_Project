@@ -86,6 +86,8 @@ if __name__ == '__main__':
     parser.add_argument('--num_workers',           default=4, type=int, help='number of workers')
     parser.add_argument('--train_display_freq',    default=1, type=int, help='display_freq for train')
     parser.add_argument('--test_display_freq',     default=10, type=int, help='display_freq for test')
+    parser.add_argument('--train_path',    default='./tiny-imagenet-200/train/', type=str, help='display_freq for train')
+    parser.add_argument('--val_path',     default='./tiny-imagenet-200/val/images', type=str, help='display_freq for test')
 
 
     global args
@@ -134,12 +136,12 @@ if __name__ == '__main__':
         transforms.RandomCrop(64, padding=4),
         transforms.RandomHorizontalFlip(),
         transforms.ToTensor(),
-        transforms.Normalize((0.4914, 0.4822, 0.4465), (0.2023, 0.1994, 0.2010)),
+        transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
     ])
 
     transform_test = transforms.Compose([
         transforms.ToTensor(),
-        transforms.Normalize((0.4914, 0.4822, 0.4465), (0.2023, 0.1994, 0.2010)),
+        transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
     ])
 
 
@@ -164,8 +166,8 @@ if __name__ == '__main__':
         img_size = 64
         
 
-        train_set = CustomDataset('./tiny-imagenet-200/train/', transform=transform_train, train=True)
-        test_set = CustomDataset('./tiny-imagenet-200/val/images', transform=transform_test)
+        train_set = CustomDataset(args.train_path, transform=transform_train, train=True)
+        test_set = CustomDataset(args.test_path, transform=transform_test)
     else:
         print("not implemented yet..")
         exit()
