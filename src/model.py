@@ -61,10 +61,11 @@ def init_spike_fn(grad_type):
 def PoissonGen(inp, rescale_fac=2.0):
     rand_inp = torch.rand_like(inp).cuda()
 
-    inp = (inp-torch.min(inp))/(torch.max(inp)-torch.min(inp))
+    # inp = (inp-torch.min(inp))/(torch.max(inp)-torch.min(inp))
 
+    # return torch.le(rand_inp, inp).float()
 
-    return torch.le(rand_inp, inp).float()
+    return torch.mul(torch.le(rand_inp * rescale_fac, torch.abs(inp)).float(), torch.sign(inp))
 
 
 class BurstGen():
@@ -76,8 +77,12 @@ class BurstGen():
         self.T_min = T_min # ms, representing time per timestep
         self.N_max = N_max
 
-        self.n_spikes_map = torch.ceil(self.norm_inp*self.N_max)
-        self.spike_map = torch.zeros_like(self.norm_inp).repeat([self.n_timesteps, 1, 1]).cuda()
+        self.n_spikes_map = torch.ceil(self.norm_inp*self.N_max).cuda() # bxcxwxh
+
+        self.spike_counts = torch.zeros_like(self.norm_inp).cuda() # bxcxwxh
+        self.spike_map = torch.zeros_like(self.norm_inp).cuda() # bxcxwxh
+        self.ISI = self._delta_ISI_timestep()
+        self.ISI_countdown = self.ISI.clone()
 
     def _normalize_inp(self):
         return (self.inp - torch.min(self.inp)) / (torch.max(self.inp) - torch.min(self.inp))
@@ -90,24 +95,33 @@ class BurstGen():
     # def _n_spikes_map(self):
     #     self.n_spikes_map = self.norm_inp*self.N_max
 
-    def _delta_ISI_timestep(self, p, n_s):
-        ISI = self.T_max
-        if n_s > 1:
-            ISI = torch.ceil(self.T_max - (self.T_max - self.T_min)*p)
-        return torch.ceil(ISI / self.T_min)
+    def _delta_ISI_timestep(self):
+        ISI_default = torch.tensor(self.T_max).repeat(list(self.norm_inp.size())).cuda()
+        
+        ISI = torch.ceil(self.T_max - (self.T_max - self.T_min)*self.norm_inp).cuda()
 
-    def _spike_map(self):
-        for n, (p_ns, p) in enumerate(zip(self.n_spikes_map, self.norm_inp)):
-            delta_t = self._delta_ISI_timestep(p, p_ns)
-            spike_train = torch.tensor([1. if t % delta_t == 0. else 0. for t in range(self.n_timesteps)])
-            self.spike_map[n] = spike_train
+        ISI = torch.where(self.n_spikes_map > 1, ISI, ISI_default)
 
-    def spike_fn(self, t):
-        return self.spike_map[t]
+        return torch.ceil(ISI / self.T_min).cuda()
+
+    def spike_fn(self):
+
+        self.ISI_countdown = self.ISI_countdown - 1.
+        
+        spike_train = torch.where(self.ISI_countdown <= 0, 1.0, 0.0)
+        
+        self.spike_counts = self.spike_counts + spike_train
+
+        viable = torch.where(self.spike_counts < self.n_spikes_map, 1.0, 0.0)
+
+        self.ISI_countdown = torch.where(spike_train == 1.0, self.ISI, self.ISI_countdown)
+
+        return torch.mul(spike_train, viable)
 
 
 class SNN_VGG11(nn.Module):
-    def __init__(self, num_timestep=30, leak_mem=0.99, spike_code='poisson', T_max=30.0, T_min=2.0, N_max=5):
+    def __init__(self, num_timestep=30, leak_mem=0.99, spike_code='poisson', T_max=30.0, T_min=2.0, N_max=5, alif=False,
+                        leak_thresh=0.99, delta_thresh=0.01):
         super(SNN_VGG11, self).__init__()
 
         self.img_size = 64
@@ -118,6 +132,9 @@ class SNN_VGG11(nn.Module):
         self.T_min = T_min
         self.N_max = N_max
         self.batch_num = self.num_steps
+        self.alif = alif
+        self.leak_thresh = leak_thresh
+        self.delta_thresh = delta_thresh
 
         affine_flag = True
         bias_flag = False
@@ -192,25 +209,43 @@ class SNN_VGG11(nn.Module):
         mem_fc1 = torch.zeros(batch_size, 4096).cuda()
         mem_fc2 = torch.zeros(batch_size, 200).cuda()
 
+        thresh_conv1 = torch.ones(batch_size, 64, h, w).cuda()
+        thresh_conv2 = torch.ones(batch_size, 128, h//2, w//2).cuda()
+        thresh_conv3 = torch.ones(batch_size, 256, h//4, w//4).cuda()
+        thresh_conv4 = torch.ones(batch_size, 256, h//4, w//4).cuda()
+        thresh_conv5 = torch.ones(batch_size, 512, h//8, w//8).cuda()
+        thresh_conv6 = torch.ones(batch_size, 512, h//8, w//8).cuda()
+        thresh_conv7 = torch.ones(batch_size, 512, h // 16, w// 16).cuda()
+        thresh_conv8 = torch.ones(batch_size, 512, h// 16, w// 16).cuda()
+        thresh_fc1 = torch.ones(batch_size, 4096).cuda()
+        thresh_fc2 = torch.ones(batch_size, 200).cuda()
+
         # TODO need args
         spike_gen = None
         if self.spike_code == 'burst':
-            spike_gen = BurstGen(inp, self.n_timesteps, T_max=self.T_max, T_min=self.T_min, N_max=self.N_max)
+            spike_gen = BurstGen(inp, self.num_steps, T_max=self.T_max, T_min=self.T_min, N_max=self.N_max)
 
         for t in range(self.num_steps):
             if self.spike_code == 'poisson':
                 spike_inp = PoissonGen(inp)
             elif self.spike_code == 'burst':
-                spike_inp = spike_gen.spike_map(t)
+                spike_inp = spike_gen.spike_fn()
             else:
                 raise ValueError(f'spike code {self.spike_code} unknown')
             out_prev = spike_inp
 
             # Compute the conv1 outputs
-            mem_thr   = (mem_conv1/self.conv1.threshold) - 1.0
+            mem_thr   = (mem_conv1/thresh_conv1) - thresh_conv1
             out       = self.spike_fn(mem_thr)
             rst       = torch.zeros_like(mem_conv1).cuda()
-            rst[mem_thr>0] = self.conv1.threshold
+            rst = torch.where(mem_thr>0,thresh_conv1, rst)
+            #rst[mem_thr>0] = thresh_conv1
+
+            if self.alif:
+                thresh_rst = torch.zeros_like(mem_conv1).cuda()
+                thresh_rst[mem_thr>0] = self.delta_thresh
+                thresh_conv1 = self.leak_thresh * thresh_conv1 + thresh_rst
+
             mem_conv1 = (self.leak_mem*mem_conv1 + self.bn1_list[int(t)](self.conv1(out_prev)) -rst)
             out_prev  = out.clone()
 
@@ -219,10 +254,17 @@ class SNN_VGG11(nn.Module):
             out_prev = out.clone()
 
             # Compute the conv2 outputs
-            mem_thr   = (mem_conv2/self.conv2.threshold) - 1.0
+            mem_thr   = (mem_conv2/thresh_conv2) - thresh_conv2
             out       = self.spike_fn(mem_thr)
             rst       = torch.zeros_like(mem_conv2).cuda()
-            rst[mem_thr>0] = self.conv2.threshold
+            rst = torch.where(mem_thr>0,thresh_conv2, rst)
+            # rst[mem_thr>0] = thresh_conv2
+
+            if self.alif:
+                thresh_rst = torch.zeros_like(mem_conv2).cuda()
+                thresh_rst[mem_thr>0] = self.delta_thresh
+                thresh_conv2 = self.leak_thresh * thresh_conv2 + thresh_rst
+
             mem_conv2 = (self.leak_mem*mem_conv2 + self.bn2_list[int(t)](self.conv2(out_prev)) -rst)
             out_prev  = out.clone()
 
@@ -231,18 +273,32 @@ class SNN_VGG11(nn.Module):
             out_prev = out.clone()
 
             # Compute the conv3 outputs
-            mem_thr = (mem_conv3 / self.conv3.threshold) - 1.0
+            mem_thr = (mem_conv3 / thresh_conv3) - thresh_conv3
             out = self.spike_fn(mem_thr)
             rst = torch.zeros_like(mem_conv3).cuda()
-            rst[mem_thr > 0] = self.conv3.threshold
+            rst = torch.where(mem_thr>0,thresh_conv3, rst)
+            # rst[mem_thr>0] = thresh_conv2
+
+            if self.alif:
+                thresh_rst = torch.zeros_like(mem_conv3).cuda()
+                thresh_rst[mem_thr>0] = self.delta_thresh
+                thresh_conv3 = self.leak_thresh * thresh_conv3 + thresh_rst
+
             mem_conv3 = (self.leak_mem * mem_conv3 + self.bn3_list[int(t)](self.conv3(out_prev)) - rst)
             out_prev = out.clone()
 
             # Compute the conv4 outputs
-            mem_thr = (mem_conv4 / self.conv4.threshold) - 1.0
+            mem_thr = (mem_conv4 / thresh_conv4) - thresh_conv4
             out = self.spike_fn(mem_thr)
             rst = torch.zeros_like(mem_conv4).cuda()
-            rst[mem_thr > 0] = self.conv4.threshold
+            rst = torch.where(mem_thr>0,thresh_conv4, rst)
+            # rst[mem_thr>0] = thresh_conv2
+
+            if self.alif:
+                thresh_rst = torch.zeros_like(mem_conv4).cuda()
+                thresh_rst[mem_thr>0] = self.delta_thresh
+                thresh_conv4 = self.leak_thresh * thresh_conv4 + thresh_rst
+
             mem_conv4 = (self.leak_mem * mem_conv4 + self.bn4_list[int(t)](self.conv4(out_prev)) - rst)
             out_prev = out.clone()
 
@@ -254,18 +310,32 @@ class SNN_VGG11(nn.Module):
             out_prev = out.clone()
 
             # Compute the conv5 outputs
-            mem_thr = (mem_conv5 / self.conv5.threshold) - 1.0
+            mem_thr = (mem_conv5 / thresh_conv5) - thresh_conv5
             out = self.spike_fn(mem_thr)
             rst = torch.zeros_like(mem_conv5).cuda()
-            rst[mem_thr > 0] = self.conv5.threshold
+            rst = torch.where(mem_thr>0,thresh_conv5, rst)
+            # rst[mem_thr>0] = thresh_conv2
+
+            if self.alif:
+                thresh_rst = torch.zeros_like(mem_conv5).cuda()
+                thresh_rst[mem_thr>0] = self.delta_thresh
+                thresh_conv5 = self.leak_thresh * thresh_conv5 + thresh_rst
+                
             mem_conv5 = (self.leak_mem * mem_conv5 + self.bn5_list[int(t)](self.conv5(out_prev)) - rst)
             out_prev = out.clone()
 
             # Compute the conv6 outputs
-            mem_thr = (mem_conv6 / self.conv6.threshold) - 1.0
+            mem_thr = (mem_conv6 / thresh_conv6) - thresh_conv6
             out = self.spike_fn(mem_thr)
             rst = torch.zeros_like(mem_conv6).cuda()
-            rst[mem_thr > 0] = self.conv6.threshold
+            rst = torch.where(mem_thr>0,thresh_conv6, rst)
+            # rst[mem_thr>0] = thresh_conv2
+
+            if self.alif:
+                thresh_rst = torch.zeros_like(mem_conv6).cuda()
+                thresh_rst[mem_thr>0] = self.delta_thresh
+                thresh_conv6 = self.leak_thresh * thresh_conv6 + thresh_rst
+                
             mem_conv6 = (self.leak_mem * mem_conv6 + self.bn6_list[int(t)](self.conv6(out_prev)) - rst)
             out_prev = out.clone()
 
@@ -278,18 +348,32 @@ class SNN_VGG11(nn.Module):
             out_prev = out.clone()
 
             # Compute the conv7 outputs
-            mem_thr = (mem_conv7 / self.conv7.threshold) - 1.0
+            mem_thr = (mem_conv7 / thresh_conv7) - thresh_conv7
             out = self.spike_fn(mem_thr)
             rst = torch.zeros_like(mem_conv7).cuda()
-            rst[mem_thr > 0] = self.conv7.threshold
+            rst = torch.where(mem_thr>0,thresh_conv7, rst)
+            # rst[mem_thr>0] = thresh_conv2
+
+            if self.alif:
+                thresh_rst = torch.zeros_like(mem_conv7).cuda()
+                thresh_rst[mem_thr>0] = self.delta_thresh
+                thresh_conv7 = self.leak_thresh * thresh_conv7 + thresh_rst
+
             mem_conv7 = (self.leak_mem * mem_conv7 + self.bn7_list[int(t)](self.conv7(out_prev)) - rst)
             out_prev = out.clone()
 
             # Compute the conv8 outputs
-            mem_thr = (mem_conv8 / self.conv8.threshold) - 1.0
+            mem_thr = (mem_conv8 / thresh_conv8) - thresh_conv8
             out = self.spike_fn(mem_thr)
             rst = torch.zeros_like(mem_conv8).cuda()
-            rst[mem_thr > 0] = self.conv8.threshold
+            rst = torch.where(mem_thr>0,thresh_conv8, rst)
+            # rst[mem_thr>0] = thresh_conv2
+
+            if self.alif:
+                thresh_rst = torch.zeros_like(mem_conv8).cuda()
+                thresh_rst[mem_thr>0] = self.delta_thresh
+                thresh_conv8 = self.leak_thresh * thresh_conv8 + thresh_rst
+                
             mem_conv8 = (self.leak_mem * mem_conv8 + self.bn8_list[int(t)](self.conv8(out_prev)) - rst)
             out_prev = out.clone()
 
@@ -302,10 +386,18 @@ class SNN_VGG11(nn.Module):
             out_prev = out_prev.reshape(batch_size, -1)
 
             # compute fc1
-            mem_thr = (mem_fc1 / self.fc1.threshold) - 1.0
+            mem_thr = (mem_fc1 / thresh_fc1) - thresh_fc1
             out = self.spike_fn(mem_thr)
             rst = torch.zeros_like(mem_fc1).cuda()
-            rst[mem_thr > 0] = self.fc1.threshold
+            rst = torch.where(mem_thr>0,thresh_fc1, rst)
+            # rst[mem_thr>0] = thresh_conv2
+
+
+            if self.alif:
+                thresh_rst = torch.zeros_like(mem_fc1).cuda()
+                thresh_rst[mem_thr>0] = self.delta_thresh
+                thresh_fc1 = self.leak_thresh * thresh_fc1 + thresh_rst
+                
             mem_fc1 = (self.leak_mem * mem_fc1 + self.bnfc_list[int(t)](self.fc1(out_prev)) - rst)
 
             out_prev = out.clone()

@@ -63,6 +63,10 @@ def main(args):
     visual_imagesize = args.visual_imagesize
     target_layer = args.target_layer
 
+    T_min = args.T_min
+    T_max = num_timestep * T_min / 2.
+    N_max = args.N_max
+
     # Set up dataloader
     batch_size = args.batch_size
     num_workers = args.num_workers
@@ -120,7 +124,7 @@ def main(args):
     #--------------------------------------------------
     save_model_statedict = torch.load(args.pretrainedmodel_pth)['state_dict']
 
-    model_A = SNN_VGG11() # Kim & Panda model
+    model_A = SNN_VGG11(spike_code='poisson') # Kim & Panda model
 
     print('********** Loading Model A **********')
 
@@ -137,7 +141,8 @@ def main(args):
     model_A.load_state_dict(cur_dict)
     model_A.eval()
 
-    model_B = SNN_VGG11() # Our model
+    model_B = SNN_VGG11(spike_code='poisson', alif=True)
+    # model_B = SNN_VGG11(T_max=T_max, T_min=T_min, spike_code='burst') # Our model
 
     print('********** Loading Model B **********')
 
@@ -313,20 +318,20 @@ def main(args):
         for l, (activation_A, activation_B) in enumerate(zip(model_A.module.saved_forward, model_B.module.saved_forward)):
             previous_spike_time_list_2['A'].append(activation_A)
             previous_spike_time_list_2['B'].append(activation_B)
-            weight = 0
+            weights_2 = {'A': 0, 'B': 0}
 
             for k in previous_spike_time_list_2.keys():
                 for prev_t in range(len(previous_spike_time_list_2[k])):
                     delta_t = time - previous_spike_time_list_2[k][prev_t] * prev_t
-                    weight += torch.exp(gamma * (-1) * delta_t)
+                    weights_2[k] += torch.exp(gamma * (-1) * delta_t)
 
             # Compute attacked SAMs
-            weighted_activation_A = weight.cuda() * activation_A
+            weighted_activation_A = weights_2['A'].cuda() * activation_A
             weighted_activation_A = weighted_activation_A.data.cpu().numpy()
             overlay_A = getForwardCAM(weighted_activation_A)
             overlay_list_2['A'].append(overlay_A)
 
-            weighted_activation_B = weight.cuda() * activation_B
+            weighted_activation_B = weights_2['B'].cuda() * activation_B
             weighted_activation_B = weighted_activation_B.data.cpu().numpy()
             overlay_B = getForwardCAM(weighted_activation_B)
             overlay_list_2['B'].append(overlay_B)
@@ -435,20 +440,20 @@ def main(args):
             for l, (activation_A, activation_B) in enumerate(zip(model_A.module.saved_forward, model_B.module.saved_forward)):
                 previous_spike_time_list_3['A'].append(activation_A)
                 previous_spike_time_list_3['B'].append(activation_B)
-                weight = 0
+                weights_3 = {'A': 0, 'B': 0}
 
                 for k in previous_spike_time_list_3.keys():
                     for prev_t in range(len(previous_spike_time_list_3[k])):
                         delta_t = time - previous_spike_time_list_3[k][prev_t] * prev_t
-                        weight += torch.exp(gamma * (-1) * delta_t)
+                        weights_3[k] += torch.exp(gamma * (-1) * delta_t)
 
                 # Compute attacked SAMs
-                weighted_activation_A = weight.cuda() * activation_A
+                weighted_activation_A = weights_3['A'].cuda() * activation_A
                 weighted_activation_A = weighted_activation_A.data.cpu().numpy()
                 overlay_A = getForwardCAM(weighted_activation_A)
                 overlay_list_3['A'].append(overlay_A)
 
-                weighted_activation_B = weight.cuda() * activation_B
+                weighted_activation_B = weights_3['B'].cuda() * activation_B
                 weighted_activation_B = weighted_activation_B.data.cpu().numpy()
                 overlay_B = getForwardCAM(weighted_activation_B)
                 overlay_list_3['B'].append(overlay_B)
@@ -492,7 +497,7 @@ if __name__ == '__main__':
                         type=str, help='multipass flow option')
     parser.add_argument('--dataset_pth', default='./tiny-imagenet-200/val/images',
                         type=str, help='path for validation dataset')
-    parser.add_argument('--output_root', default='./output',
+    parser.add_argument('--output_root', default='./output_debug',
                         type=str, help='root for output SAM directories')
     # Run settings
     parser.add_argument('--batch_size', default=1, type=int, help='batch size should be 1')
@@ -507,9 +512,11 @@ if __name__ == '__main__':
     parser.add_argument('--timesteps', default=30, type=float, help='timesteps')
     parser.add_argument('--leak_mem', default=0.99, type=float, help='leak_mem')
     parser.add_argument('--gamma', default=0.5, type=float, help='parameter for spike exponential function')
-    parser.add_argument('--target_layer', default=8, choices=[4, 6, 8],
+    parser.add_argument('--target_layer', default=6, choices=[4, 6, 8],
                         type=int, help='target_layer [4, 6, 8 (default)] is available')
-    parser.add_argument('--seed', default=None, type=int, help='sets seed for Poisson generator')
+    parser.add_argument('--T_min', default=2., type=float, help='min time interval (in ms), also the time per timestep')
+    parser.add_argument('--N_max', default=5, type=int, help='max number of spikes in a burst')
+    parser.add_argument('--seed', default=1, type=int, help='sets seed for Poisson generator')
     # GradCAM settings
     parser.add_argument('--aug_smooth', action='store_true',
                         help='Apply test time augmentation to smooth CAM')
