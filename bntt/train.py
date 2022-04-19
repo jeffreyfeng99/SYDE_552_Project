@@ -77,7 +77,7 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='SNN trained with BNTT', formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     parser.add_argument('--seed',                  default=0,        type=int,   help='Random seed')
     parser.add_argument('--num_steps',             default=30,    type=int, help='Number of time-step')
-    parser.add_argument('--batch_size',            default=8,       type=int,   help='Batch size')
+    parser.add_argument('--batch_size',            default=64,       type=int,   help='Batch size')
     parser.add_argument('--lr',                    default=0.1,   type=float, help='Learning rate')
     parser.add_argument('--leak_mem',              default=0.99,   type=float, help='Leak_mem')
     parser.add_argument('--arch',              default='vgg11',   type=str, help='Dataset [vgg9, vgg11]')
@@ -85,7 +85,7 @@ if __name__ == '__main__':
     parser.add_argument('--num_epochs',            default=90,       type=int,   help='Number of epochs')
     parser.add_argument('--num_workers',           default=4, type=int, help='number of workers')
     parser.add_argument('--train_display_freq',    default=1, type=int, help='display_freq for train')
-    parser.add_argument('--test_display_freq',     default=10, type=int, help='display_freq for test')
+    parser.add_argument('--test_display_freq',     default=1, type=int, help='display_freq for test')
     parser.add_argument('--train_path',    default='./tiny-imagenet-200/train/', type=str, help='display_freq for train')
     parser.add_argument('--val_path',     default='./tiny-imagenet-200/val/images', type=str, help='display_freq for test')
     parser.add_argument('--train_json_path',    default='./tiny-imagenet-200/train_class_dict.json', type=str, help='display_freq for train')
@@ -99,7 +99,7 @@ if __name__ == '__main__':
     #--------------------------------------------------
     # Initialize tensorboard setting
     #--------------------------------------------------
-    log_dir = 'modelsave'
+    log_dir = args.arch
     if os.path.isdir(log_dir) is not True:
         os.mkdir(log_dir)
 
@@ -188,6 +188,12 @@ if __name__ == '__main__':
         model = SNN_VGG9_BNTT(num_steps = num_steps, leak_mem=leak_mem, img_size=img_size,  num_cls=num_cls)
     elif args.arch == 'vgg11':
         model = SNN_VGG11_BNTT(num_steps = num_steps, leak_mem=leak_mem, img_size=img_size,  num_cls=num_cls)
+    elif args.arch == 'burst':
+        model = SNN_VGG11_BNTT(num_steps = num_steps, leak_mem=leak_mem, img_size=img_size,  num_cls=num_cls,
+                                    T_min=2., T_max=30., spike_code='burst')
+    elif args.arch == 'alif':
+        model = SNN_VGG11_BNTT(num_steps = num_steps, leak_mem=leak_mem, img_size=img_size,  num_cls=num_cls,
+                    alif=True, leak_thresh=0.99, delta_thresh=0.02)
     else:
         print("not implemented yet..")
         exit()

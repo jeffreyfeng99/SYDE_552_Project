@@ -51,7 +51,7 @@ class BurstGen():
         self.spike_counts = torch.zeros_like(self.norm_inp).cuda() # bxcxwxh
         self.spike_map = torch.zeros_like(self.norm_inp).cuda() # bxcxwxh
         self.ISI = self._delta_ISI_timestep()
-        self.ISI_countdown = self.ISI.clone()
+        self.ISI_countdown = self.ISI.clone().cuda()
 
     def _normalize_inp(self):
         return (self.inp - torch.min(self.inp)) / (torch.max(self.inp) - torch.min(self.inp))
@@ -77,11 +77,11 @@ class BurstGen():
 
         self.ISI_countdown = self.ISI_countdown - 1.
         
-        spike_train = torch.where(self.ISI_countdown <= 0, 1.0, 0.0)
+        spike_train = torch.where(self.ISI_countdown <= 0, torch.tensor(1.0).cuda(), torch.tensor(0.0).cuda())
         
         self.spike_counts = self.spike_counts + spike_train
 
-        viable = torch.where(self.spike_counts < self.n_spikes_map, 1.0, 0.0)
+        viable = torch.where(self.spike_counts < self.n_spikes_map, torch.tensor(1.0).cuda(), torch.tensor(0.0).cuda())
 
         self.ISI_countdown = torch.where(spike_train == 1.0, self.ISI, self.ISI_countdown)
 
@@ -293,6 +293,8 @@ class SNN_VGG11_BNTT(nn.Module):
     def forward(self, inp):
 
         batch_size = inp.size(0)
+        h, w = inp.size(2) ,inp.size(3)
+
         mem_conv1 = torch.zeros(batch_size, 64, self.img_size, self.img_size).cuda()
         mem_conv2 = torch.zeros(batch_size, 128, self.img_size // 2, self.img_size // 2).cuda()
         mem_conv3 = torch.zeros(batch_size, 256, self.img_size // 4, self.img_size // 4).cuda()
