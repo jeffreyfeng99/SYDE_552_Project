@@ -36,6 +36,58 @@ def PoissonGen(inp, rescale_fac=2.0):
 
 
 
+
+class BurstGen():
+    def __init__(self, inp, n_timesteps=30, T_max=30.0, T_min=2.0, N_max=5):
+        self.inp = inp
+        self.norm_inp = self._normalize_inp()
+        self.n_timesteps = n_timesteps
+        self.T_max = T_max # ms
+        self.T_min = T_min # ms, representing time per timestep
+        self.N_max = N_max
+
+        self.n_spikes_map = torch.ceil(self.norm_inp*self.N_max).cuda() # bxcxwxh
+
+        self.spike_counts = torch.zeros_like(self.norm_inp).cuda() # bxcxwxh
+        self.spike_map = torch.zeros_like(self.norm_inp).cuda() # bxcxwxh
+        self.ISI = self._delta_ISI_timestep()
+        self.ISI_countdown = self.ISI.clone()
+
+    def _normalize_inp(self):
+        return (self.inp - torch.min(self.inp)) / (torch.max(self.inp) - torch.min(self.inp))
+
+    # def _calc_N_spikes(self, p):
+    #     if p < 0. or p > 1.:
+    #         raise ValueError(f'pixel intensity should be between [0., 1.] but is {p}')
+    #     return self.N_max*p
+    #
+    # def _n_spikes_map(self):
+    #     self.n_spikes_map = self.norm_inp*self.N_max
+
+    def _delta_ISI_timestep(self):
+        ISI_default = torch.tensor(self.T_max).repeat(list(self.norm_inp.size())).cuda()
+        
+        ISI = torch.ceil(self.T_max - (self.T_max - self.T_min)*self.norm_inp).cuda()
+
+        ISI = torch.where(self.n_spikes_map > 1, ISI, ISI_default)
+
+        return torch.ceil(ISI / self.T_min).cuda()
+
+    def spike_fn(self):
+
+        self.ISI_countdown = self.ISI_countdown - 1.
+        
+        spike_train = torch.where(self.ISI_countdown <= 0, 1.0, 0.0)
+        
+        self.spike_counts = self.spike_counts + spike_train
+
+        viable = torch.where(self.spike_counts < self.n_spikes_map, 1.0, 0.0)
+
+        self.ISI_countdown = torch.where(spike_train == 1.0, self.ISI, self.ISI_countdown)
+
+        return torch.mul(spike_train, viable)
+
+
 class SNN_VGG9_BNTT(nn.Module):
     def __init__(self, num_steps, leak_mem=0.95, img_size=32,  num_cls=10):
         super(SNN_VGG9_BNTT, self).__init__()
@@ -158,7 +210,7 @@ class SNN_VGG9_BNTT(nn.Module):
 
 class SNN_VGG11_BNTT(nn.Module):
     def __init__(self, num_steps, leak_mem=0.95, img_size=32,  num_cls=10, alif=False,
-                        leak_thresh=0.99, delta_thresh=0.01):
+                        leak_thresh=0.99, delta_thresh=0.01, spike_code='poisson', T_max=30.0, T_min=2.0, N_max=5,):
         super(SNN_VGG11_BNTT, self).__init__()
 
         self.img_size = img_size
@@ -170,6 +222,10 @@ class SNN_VGG11_BNTT(nn.Module):
         self.alif = alif
         self.leak_thresh = leak_thresh
         self.delta_thresh = delta_thresh
+        self.spike_code = spike_code
+        self.T_max = T_max
+        self.T_min = T_min
+        self.N_max = N_max
 
         print (">>>>>>>>>>>>>>>>> VGG11 >>>>>>>>>>>>>>>>>>>>>>>")
         print ("***** time step per batchnorm".format(self.batch_num))
@@ -262,10 +318,19 @@ class SNN_VGG11_BNTT(nn.Module):
         thresh_fc2 = torch.ones(batch_size, 200).cuda()
         thresh_conv_list = [thresh_conv1, thresh_conv2, thresh_conv3, thresh_conv4, thresh_conv5, thresh_conv6, thresh_conv7, thresh_conv8]
 
+        spike_gen = None
+        if self.spike_code == 'burst':
+            spike_gen = BurstGen(inp, self.num_steps, T_max=self.T_max, T_min=self.T_min, N_max=self.N_max)
 
         for t in range(self.num_steps):
 
-            spike_inp = PoissonGen(inp)
+            if self.spike_code == 'poisson':
+                spike_inp = PoissonGen(inp)
+            elif self.spike_code == 'burst':
+                spike_inp = spike_gen.spike_fn()
+            else:
+                raise ValueError(f'spike code {self.spike_code} unknown')
+            
             out_prev = spike_inp
 
             for i in range(len(self.conv_list)):
