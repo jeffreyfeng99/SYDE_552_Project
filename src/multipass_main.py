@@ -41,7 +41,7 @@ def main(args):
     dataset_path = args.dataset_pth
 
     output_dirs = {}
-    output_basedirs = ['original', 'gradcam',
+    output_basedirs = ['original', 'gradcam','grayscale_gradcam',
                        'noisy', 'noisy_SAM_A', 'noisy_SAM_B',
                        'clean_SAM_A', 'clean_SAM_B',
                        'clean_minerror_SAM_A', 'clean_minerror_SAM_B',
@@ -98,18 +98,22 @@ def main(args):
                                 aug_smooth=aug_smooth,
                                 eigen_smooth=eigen_smooth)
 
-            if j in img_nums:
-                grayscale_cam = grayscale_cam[0, :]
-                grayscale_cam = cv2.resize(grayscale_cam, dsize=(64, 64))
-                np_img = images.cpu().numpy()[0]
-                np_img = np_img.transpose(1,2,0)
-                np_img = (np_img-np.min(np_img))/(np.max(np_img) - np.min(np_img))
-                gradcam_image = show_cam_on_image(np_img, grayscale_cam, use_rgb=True)
-                
-                # gradcam_image is RGB encoded whereas "cv2.imwrite" requires BGR encoding.
-                gradcam_image = cv2.cvtColor(gradcam_image, cv2.COLOR_RGB2BGR)
-                cam_image_path = os.path.join(output_dirs['gradcam'], f'gradcam_{j}.jpg').replace('\\', '/')
-                cv2.imwrite(cam_image_path, gradcam_image)
+            grayscale_cam = grayscale_cam[0, :]
+            grayscale_cam = cv2.resize(grayscale_cam, dsize=(64, 64))
+            np_img = images.cpu().numpy()[0]
+            np_img = np_img.transpose(1,2,0)
+            np_img = (np_img-np.min(np_img))/(np.max(np_img) - np.min(np_img))
+
+            gscale_img = (grayscale_cam*255).astype('uint8')
+            grayscale_cam_image_path = os.path.join(output_dirs['grayscale_gradcam'], paths[0]).replace('\\', '/')
+            cv2.imwrite(grayscale_cam_image_path, gscale_img)
+            
+            gradcam_image = show_cam_on_image(np_img, grayscale_cam, use_rgb=True)
+            
+            # gradcam_image is RGB encoded whereas "cv2.imwrite" requires BGR encoding.
+            gradcam_image = cv2.cvtColor(gradcam_image, cv2.COLOR_RGB2BGR)
+            cam_image_path = os.path.join(output_dirs['gradcam'], paths[0]).replace('\\', '/')
+            cv2.imwrite(cam_image_path, gradcam_image)
     del cam
     #--------------------------------------------------
     # Instantiate both SNN models
@@ -244,6 +248,7 @@ def main(args):
 
         for n, k in enumerate(overlay_list.keys()):
             output_path = os.path.join(output_dirs[f'clean_minerror_SAM_{k}'], paths).replace('\\','/')
+            grayscale_cam = load_target_image(os.path.join(output_dirs['grayscale_gradcam'], paths).replace('\\','/'))
             error, index = localization_error(overlay_list[k], grayscale_cam, save_image=output_path)
             localization_trackers[n].update(error, paths, index)
 
@@ -346,6 +351,7 @@ def main(args):
 
         for n, k in enumerate(overlay_list_2.keys()):
             output_path = os.path.join(output_dirs[f'attacked_minerror_SAM_1{k}'], paths).replace('\\','/')
+            grayscale_cam = load_target_image(os.path.join(output_dirs['grayscale_gradcam'], paths).replace('\\','/'))
             error, index = localization_error(overlay_list_2[k], grayscale_cam, save_image=output_path)
             localization_trackers_2[n].update(error, paths, index)
 
@@ -398,7 +404,7 @@ def main(args):
 
             # Apply gaussian noise to images
             # images_noisy = [gaussian_noise(images)*images_A, gaussian_noise(images)*images_B]
-            images_noisy = [images*(1.-images_A),images*(1.-images_B)]
+            images_noisy = [images*(images_A),images*(images_B)]
             # images_noisy = [gaussian_noise(images,modifier=images_A), gaussian_noise(images,modifier=images_B)]
             labels = [labels_A, labels_B]
             paths = [paths_A[0], paths_B[0]]
@@ -467,6 +473,7 @@ def main(args):
 
             for n, k in enumerate(overlay_list_3.keys()):
                 output_path = os.path.join(output_dirs[f'attacked_minerror_SAM_2{k}'], paths[n]).replace('\\','/')
+                grayscale_cam = load_target_image(os.path.join(output_dirs['grayscale_gradcam'], paths[n]).replace('\\','/'))
                 error, index = localization_error(overlay_list_3[k], grayscale_cam, save_image=output_path)
                 localization_trackers_3[n].update(error, paths[n], index)
 

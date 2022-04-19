@@ -44,20 +44,22 @@ def accuracy(outp, target, topk=(1,)):
 def localization_error(sam_list, reference, save_image=None, eps=1e-8):
     errors = []
 
+    # reference = cv2.resize(reference, dsize=(64, 64))
+
     for t in range(len(sam_list)):
         
         sam = sam_list[t]
+        sam = cv2.resize(sam, dsize=(64, 64))
+
         sam[sam==1.] = 1.-eps
         sam[sam==0.] = eps
-
-        sam = cv2.resize(sam, dsize=(64, 64))
 
         error = -np.sum(reference*np.log(sam) + (1.-reference)*np.log(1.-sam))
         errors.append(error)
     
     if save_image is not None:
         save_sam = sam_list[np.argmin(errors)]
-        save_sam = (np.array(1.-save_sam)*255).astype('uint8')
+        save_sam = (save_sam*255).astype('uint8')
         save_sam = cv2.resize(save_sam, dsize=(64, 64))
         cv2.imwrite(save_image,  save_sam)
 

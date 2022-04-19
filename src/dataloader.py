@@ -2,6 +2,7 @@ import os
 import cv2
 from PIL import Image
 from json import load
+import numpy as np
 
 import torch
 from torchvision import transforms
@@ -37,6 +38,16 @@ class CustomDataset(data.Dataset):
 
     def __len__(self):
         return self.n_data
+
+
+def load_target_image(path, normalize=True):
+
+    imgs = np.asarray(Image.open(path).convert('L'))
+
+    if normalize:
+        imgs = (imgs - np.min(imgs))/(np.max(imgs)-np.min(imgs))
+
+    return imgs
 
 
 def create_dataloader(dataset_path, dataset_size, batch_size, num_workers, no_norm=False):
