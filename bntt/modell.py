@@ -71,7 +71,7 @@ class BurstGen():
 
         ISI = torch.where(self.n_spikes_map > 1, ISI, ISI_default)
 
-        return torch.ceil(ISI / self.T_min).cuda()
+        return torch.floor(ISI / self.T_min).cuda()
 
     def spike_fn(self):
 
