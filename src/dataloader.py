@@ -9,6 +9,27 @@ from torchvision import transforms, datasets
 from torch.utils.data.dataloader import DataLoader
 import torch.utils.data as data
 from torch.utils.data import Subset
+from torchvision.datasets import CIFAR10
+
+class CIFAR10(CIFAR10):
+    def __init__(self, root,train,download,transform):
+        super(CIFAR10, self).__init__(root=root, train=train, download=download, transform=transform)
+
+    def __getitem__(self, index: int):
+        img, target = self.data[index], self.targets[index]
+        # doing this so that it is consistent with all other datasets
+        # to return a PIL Image
+        if isinstance(img, torch.Tensor):
+            img = Image.fromarray(img.numpy())
+        else:
+            img = Image.fromarray(img)
+
+        if self.transform is not None:
+            img = self.transform(img)
+
+        paths = f'{target}.JPEG'
+        return img, target, paths
+
 
 class CustomDataset(data.Dataset):
     def __init__(self, data_root, transform=None, train=False):
@@ -72,7 +93,7 @@ def create_dataloader(dataset_path, dataset_size, batch_size, num_workers, no_no
     if 'cifar' not in dataset_path:
         dataset = CustomDataset(dataset_path, transform=transform)
     else:
-        dataset = datasets.CIFAR10(root='./cifar10', train=False,
+        dataset = CIFAR10(root='./cifar10', train=False,
                                                 download=True, transform=transform)
 
     dataset = Subset(dataset, torch.arange(dataset_size))
