@@ -135,6 +135,7 @@ if __name__ == '__main__':
     #--------------------------------------------------
 
     transform_train = transforms.Compose([
+        transforms.Resize(64),
         transforms.RandomCrop(64, padding=4),
         transforms.RandomHorizontalFlip(),
         transforms.ToTensor(),
@@ -142,6 +143,7 @@ if __name__ == '__main__':
     ])
 
     transform_test = transforms.Compose([
+        transforms.Resize(64),
         transforms.ToTensor(),
         transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
     ])
@@ -149,11 +151,25 @@ if __name__ == '__main__':
 
     if args.dataset == 'cifar10':
         num_cls = 10
-        img_size = 32
+        img_size = 64
 
-        train_set = torchvision.datasets.CIFAR10(root='./data', train=True,
+        transform_train = transforms.Compose([
+            transforms.Resize(64),
+            transforms.RandomCrop(64, padding=4),
+            transforms.RandomHorizontalFlip(),
+            transforms.ToTensor(),
+            transforms.Normalize(mean=(0.4914, 0.4822, 0.4465), std=(0.247, 0.243, 0.261)),
+        ])
+
+        transform_test = transforms.Compose([
+            transforms.Resize(64),
+            transforms.ToTensor(),
+            transforms.Normalize(mean=(0.4914, 0.4822, 0.4465), std=(0.247, 0.243, 0.261)),
+        ])
+
+        train_set = torchvision.datasets.CIFAR10(root='./cifar10', train=True,
                                                 download=True, transform=transform_train)
-        test_set = torchvision.datasets.CIFAR10(root='./data', train=False,
+        test_set = torchvision.datasets.CIFAR10(root='./cifar10', train=False,
                                                 download=True, transform=transform_test)
     elif args.dataset == 'cifar100':
         num_cls = 100

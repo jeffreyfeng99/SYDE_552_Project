@@ -5,7 +5,7 @@ from json import load
 import numpy as np
 
 import torch
-from torchvision import transforms
+from torchvision import transforms, datasets
 from torch.utils.data.dataloader import DataLoader
 import torch.utils.data as data
 from torch.utils.data import Subset
@@ -57,11 +57,24 @@ def create_dataloader(dataset_path, dataset_size, batch_size, num_workers, no_no
                             transforms.ToTensor()
                         ])
     else:
-        transform = transforms.Compose([
-                            transforms.ToTensor(),
-                            transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
-                        ])
-    dataset = CustomDataset(dataset_path, transform=transform)
+        if 'cifar' not in dataset_path:
+            transform = transforms.Compose([
+                                transforms.ToTensor(),
+                                transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
+                            ])
+        else:
+            transform = transforms.Compose([
+                transforms.Resize(64),
+                transforms.ToTensor(),
+                transforms.Normalize(mean=(0.4914, 0.4822, 0.4465), std=(0.247, 0.243, 0.261))
+            ])
+
+    if 'cifar' not in dataset_path:
+        dataset = CustomDataset(dataset_path, transform=transform)
+    else:
+        dataset = datasets.CIFAR10(root='./cifar10', train=False,
+                                                download=True, transform=transform)
+
     dataset = Subset(dataset, torch.arange(dataset_size))
     data_loader = torch.utils.data.DataLoader(
                     dataset,
