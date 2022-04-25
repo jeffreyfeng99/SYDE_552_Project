@@ -60,7 +60,7 @@ class CustomDataset(data.Dataset):
             self.img_labels = load(open('./cifar10/train_class_dict.json', 'r'))
         else:
             try:
-                self.img_labels = load(open('../input/syde522pretrained/val_class_dict.json', 'r'))
+                self.img_labels = load(open('../input/syde552pretrained/val_class_dict.json', 'r'))
             except:
                 self.img_labels = load(open('./cifar10/val_class_dict.json', 'r'))
 
