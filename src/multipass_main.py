@@ -73,7 +73,7 @@ def main(args):
 
     # select number of samples for visualization
     img_nums = list(range(len(val_loader))) #[10, 52] 
-    
+
     # Set up adversarial noise
     flow = args.flow
     if flow == "attack-img" or flow == "attack-sam" or flow == "all":
@@ -521,7 +521,7 @@ if __name__ == '__main__':
     parser.add_argument('--limit_output', action='store_true',
                         help='limits the number of images to pass')
     parser.add_argument('--visual_imagesize', default=128, type=int)
-    parser.add_argument('--dataset_size', default=10000, type=int)
+    parser.add_argument('--dataset_size', default=100, type=int)
     # SNN settings
     parser.add_argument('--pretrainedmodel_pth_A', default='./pretrained/jeff_work/vgg11/cifar10vgg11_timestep30_lr0.1_epoch20_leak0.99_bsize32_v5_bestmodel.pth.tar',
                         type=str, help='path for pretrained model')

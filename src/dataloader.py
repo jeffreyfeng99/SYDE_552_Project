@@ -59,7 +59,10 @@ class CustomDataset(data.Dataset):
         if train:
             self.img_labels = load(open('./cifar10/train_class_dict.json', 'r'))
         else:
-            self.img_labels = load(open('./cifar10/val_class_dict.json', 'r'))
+            try:
+                self.img_labels = load(open('../input/syde522pretrained/val_class_dict.json', 'r'))
+            except:
+                self.img_labels = load(open('./cifar10/val_class_dict.json', 'r'))
 
         self.n_data = len(self.img_paths)
 
