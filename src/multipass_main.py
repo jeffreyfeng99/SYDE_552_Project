@@ -206,7 +206,7 @@ def main(args):
             original = cv2.resize(original, dsize=(visual_imagesize, visual_imagesize))
             original = (original - np.min(original)) / (np.max(original) - np.min(original))
             original = (np.array(original) * 255).astype('uint8')
-            cv2.imwrite(os.path.join(output_dirs['original'], f'original_{j}.jpg').replace('\\', '/'),
+            cv2.imwrite(os.path.join(output_dirs['original'], paths).replace('\\', '/'),
                         cv2.cvtColor(original, cv2.COLOR_RGB2BGR))
 
         # Compute classification accuracies
@@ -310,7 +310,7 @@ def main(args):
             noisy = cv2.resize(noisy, dsize=(visual_imagesize, visual_imagesize))
             noisy = (noisy - np.min(noisy)) / (np.max(noisy) - np.min(noisy))
             noisy = (np.array(noisy) * 255).astype('uint8')
-            cv2.imwrite(os.path.join(output_dirs['noisy'], f'noisy_{j}.jpg').replace('\\', '/'),
+            cv2.imwrite(os.path.join(output_dirs['noisy'], paths).replace('\\', '/'),
                         cv2.cvtColor(noisy, cv2.COLOR_RGB2BGR))
 
         # Compute classification accuracies
@@ -439,7 +439,7 @@ def main(args):
                     noisy = (noisy - np.min(noisy)) / (np.max(noisy) - np.min(noisy))
                     noisy = (np.array(noisy) * 255).astype('uint8')
                     numpy_noisy.append(noisy)
-                    cv2.imwrite(os.path.join(output_dirs[f'noisy_SAM_{key}'], f'noisy_{j}.jpg').replace('\\', '/'),
+                    cv2.imwrite(os.path.join(output_dirs[f'noisy_SAM_{key}'], paths[n]).replace('\\', '/'),
                                 cv2.cvtColor(noisy, cv2.COLOR_RGB2BGR))
 
             # Compute classification accuracies
@@ -513,7 +513,7 @@ if __name__ == '__main__':
                         type=str, help='multipass flow option')
     parser.add_argument('--dataset_pth', default='./cifar10',
                         type=str, help='path for validation dataset')
-    parser.add_argument('--output_root', default='./output_cifar',
+    parser.add_argument('--output_root', default='./output_cifar2',
                         type=str, help='root for output SAM directories')
     # Run settings
     parser.add_argument('--batch_size', default=1, type=int, help='batch size should be 1')
@@ -521,7 +521,7 @@ if __name__ == '__main__':
     parser.add_argument('--limit_output', action='store_true',
                         help='limits the number of images to pass')
     parser.add_argument('--visual_imagesize', default=128, type=int)
-    parser.add_argument('--dataset_size', default=100, type=int)
+    parser.add_argument('--dataset_size', default=20, type=int)
     # SNN settings
     parser.add_argument('--pretrainedmodel_pth_A', default='./pretrained/jeff_work/vgg11/cifar10vgg11_timestep30_lr0.1_epoch20_leak0.99_bsize32_v5_bestmodel.pth.tar',
                         type=str, help='path for pretrained model')
