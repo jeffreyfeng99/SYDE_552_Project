@@ -4,6 +4,45 @@ import pandas as pd
 from glob import glob
 import os
 
+import torch
+from torchvision import transforms, datasets
+from torch.utils.data.dataloader import DataLoader
+import torch.utils.data as data
+from torch.utils.data import Subset
+from torchvision.datasets import CIFAR10
+from PIL import Image
+
+class CIFAR10(CIFAR10):
+    def __init__(self, root,train,download,transform):
+        super(CIFAR10, self).__init__(root=root, train=train, download=download, transform=transform)
+
+    def __getitem__(self, index: int):
+        img, target = self.data[index], self.targets[index]
+        # doing this so that it is consistent with all other datasets
+        # to return a PIL Image
+        if isinstance(img, torch.Tensor):
+            img = Image.fromarray(img.numpy())
+        else:
+            img = Image.fromarray(img)
+
+        if self.transform is not None:
+            img = self.transform(img)
+
+        paths = f'{index}.JPEG'
+        return img, target, paths
+
+def create_cifar_dict():
+    dataset = CIFAR10(root='./cifar10', train=False,
+                                                download=True, transform=None)
+
+    cifar_dict = {}
+
+    for item in dataset:
+        cifar_dict[item[2]] = {'index': item[1]}
+    
+    dump(cifar_dict, open('./cifar10/val_class_dict.json', 'w'),
+         indent=2)
+
 def create_class_dict():
     # Create a new version only including tiny 200 classes
     df = pd.read_csv('./tiny-imagenet-200/words.txt', sep='\t', header=None)
@@ -64,4 +103,5 @@ def create_train_class_dict():
 if __name__ == '__main__':
     # create_class_dict()
     # create_val_class_dict()
-    create_train_class_dict()
+    # create_train_class_dict()
+    create_cifar_dict()

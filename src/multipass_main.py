@@ -54,9 +54,6 @@ def main(args):
         os.makedirs(output_dir, exist_ok=True)
         output_dirs[output_base] = output_dir
 
-    # select number of samples for visualization
-    img_nums = list(range(20)) #[10, 52] 
-
     gamma = args.gamma
     num_timestep = args.timesteps
     leak_mem = args.leak_mem
@@ -74,6 +71,9 @@ def main(args):
 
     val_loader = create_dataloader(dataset_path, dataset_size, batch_size, num_workers)
 
+    # select number of samples for visualization
+    img_nums = list(range(len(val_loader))) #[10, 52] 
+    
     # Set up adversarial noise
     flow = args.flow
     if flow == "attack-img" or flow == "attack-sam" or flow == "all":
@@ -122,39 +122,46 @@ def main(args):
     #--------------------------------------------------
     # Instantiate both SNN models
     #--------------------------------------------------
-    save_model_statedict = torch.load(args.pretrainedmodel_pth)['state_dict']
-
+    save_model_statedict = torch.load(args.pretrainedmodel_pth_A)['state_dict']
     model_A = SNN_VGG11(spike_code='poisson') # Kim & Panda model
-
     print('********** Loading Model A **********')
+    print('Original Accuracy: ', torch.load(args.pretrainedmodel_pth_A)['accuracy'])
 
     model_A = torch.nn.DataParallel(model_A).cuda()
     cur_dict = model_A.state_dict()
 
-    for key in save_model_statedict.keys():
-        if key in cur_dict:
-            if (save_model_statedict[key].shape == cur_dict[key].shape):
-                cur_dict[key] = save_model_statedict[key]
-            else:
-                print("Error mismatch")
+    for key1, key2 in zip(save_model_statedict.keys(), cur_dict.keys()):
+        
+        if (save_model_statedict[key1].shape == cur_dict[key2].shape):
+            cur_dict[key2] = save_model_statedict[key1]
+        else:
+            print("Error mismatch")
 
     model_A.load_state_dict(cur_dict)
     model_A.eval()
 
-    model_B = SNN_VGG11(spike_code='poisson', alif=True)
-    # model_B = SNN_VGG11(T_max=T_max, T_min=T_min, spike_code='burst') # Our model
-
+    save_model_statedict = torch.load(args.pretrainedmodel_pth_B)['state_dict']
+    if args.arch == 'poisson':
+        model_B = SNN_VGG11(spike_code='poisson')
+    elif args.arch == 'alif':
+        model_B = SNN_VGG11(spike_code='poisson', alif=True)
+    elif args.arch == 'burst':
+        model_B = SNN_VGG11(T_max=T_max, T_min=T_min, spike_code='burst')
+    else:
+        raise NotImplementedError
+        
     print('********** Loading Model B **********')
+    print('Original Accuracy: ', torch.load(args.pretrainedmodel_pth_B)['accuracy'])
 
-    model_B = torch.nn.DataParallel(model_B).cuda()
+    model_B = torch.nn.DataParallel(model_B).cuda()    
     cur_dict = model_B.state_dict()
 
-    for key in save_model_statedict.keys():
-        if key in cur_dict:
-            if (save_model_statedict[key].shape == cur_dict[key].shape):
-                cur_dict[key] = save_model_statedict[key]
-            else:
-                print("Error mismatch")
+    for key1, key2 in zip(save_model_statedict.keys(), cur_dict.keys()):
+        
+        if (save_model_statedict[key1].shape == cur_dict[key2].shape):
+            cur_dict[key2] = save_model_statedict[key1]
+        else:
+            print("Error mismatch")
 
     model_B.load_state_dict(cur_dict)
     model_B.eval()
@@ -205,7 +212,7 @@ def main(args):
         # Compute classification accuracies
         for n in range(len(models)):
             output = models[n](images, target_layer=target_layer)
-            classification_accuracy_trackers[n].update(accuracy(output, labels)[0])
+            classification_accuracy_trackers[n].update(output.detach(),labels.detach(),paths)
 
         process = 0
         time = 0
@@ -262,8 +269,9 @@ def main(args):
     for n, k in enumerate(overlay_list.keys()):
         localization_trackers[n].export(os.path.join(output_dirs[f'clean_minerror_SAM_{k}'], 'localization_error.csv').replace('\\','/'))
         localization_trackers[n].print_output()
+        classification_accuracy_trackers[n].export(os.path.join(output_dirs[f'clean_minerror_SAM_{k}'], 'predictions.csv').replace('\\','/'))
         classification_accuracy_trackers[n].print_output()
-
+    
     # --------------------------------------------------
     # PASS #2: Add Gaussian noise to images
     # --------------------------------------------------
@@ -308,7 +316,7 @@ def main(args):
         # Compute classification accuracies
         for n in range(len(models)):
             output = models[n](images_noisy, target_layer=target_layer)
-            classification_accuracy_trackers_2[n].update(accuracy(output, labels)[0])
+            classification_accuracy_trackers_2[n].update(output.detach(), labels.detach(), paths)
 
         process = 0
         time = 0
@@ -365,13 +373,14 @@ def main(args):
     for n, k in enumerate(overlay_list_2.keys()):
         localization_trackers_2[n].export(os.path.join(output_dirs[f'attacked_minerror_SAM_1{k}'], 'localization_error.csv').replace('\\','/'))
         localization_trackers_2[n].print_output()
+        classification_accuracy_trackers_2[n].export(os.path.join(output_dirs[f'attacked_minerror_SAM_1{k}'], 'predictions.csv').replace('\\','/'))
         classification_accuracy_trackers_2[n].print_output()
 
     # --------------------------------------------------
     # PASS #3: Add Gaussian noise to SAMs
     # --------------------------------------------------
     del val_loader
-    val_loader = create_dataloader(dataset_path, len(img_nums), batch_size, num_workers)
+    val_loader = create_cifar_loader()
 
     if flow == 'attack-sam' or flow == 'all':
         # Need to create a new dataloader for each clean SAM
@@ -386,7 +395,7 @@ def main(args):
         localization_tracker_3B = LocalizationMeter()
         localization_trackers_3 = [localization_tracker_3A, localization_tracker_3B]
 
-        for j, (data, data_A, data_B) in enumerate(tqdm(zip(val_loader, SAM_1A_dataloader,SAM_1B_dataloader), total=len(SAM_1A_dataloader))):
+        for j, (data_A, data_B) in enumerate(tqdm(zip(SAM_1A_dataloader,SAM_1B_dataloader), total=len(SAM_1A_dataloader))):
             if args.limit_output is True:
                 if j > np.max(img_nums):
                     continue
@@ -398,18 +407,24 @@ def main(args):
                 model.module.saved_grad = 0
                 model.module.saved_forward = []
 
-            images, labels, paths = data
             images_A, labels_A, paths_A = data_A
             images_B, labels_B, paths_B = data_B
-            images = images.cuda()
             images_A = images_A.cuda()
-            labels_A = labels_A.cuda()
             images_B = images_B.cuda()
+            labels_A = labels_A.cuda()
             labels_B = labels_B.cuda()
+            
+            assert paths_A[0] == paths_B[0]
+            images, labels, paths = val_loader.get_target_image(paths_B[0])
+            images = images.unsqueeze(0).cuda()
 
             # Apply gaussian noise to images
             # images_noisy = [gaussian_noise(images)*images_A, gaussian_noise(images)*images_B]
-            images_noisy = [images*(images_A),images*(images_B)]
+            if args.enhance_map:
+                images_A = torch.pow(images_A, 0.5)
+                images_B = torch.pow(images_A, 0.5)
+
+            images_noisy = [images*images_A,images*images_B]
             # images_noisy = [gaussian_noise(images,modifier=images_A), gaussian_noise(images,modifier=images_B)]
             labels = [labels_A, labels_B]
             paths = [paths_A[0], paths_B[0]]
@@ -430,7 +445,7 @@ def main(args):
             # Compute classification accuracies
             for n in range(len(models)):
                 output = models[n](images_noisy[n], target_layer=target_layer)
-                classification_accuracy_trackers_3[n].update(accuracy(output, labels[n])[0])
+                classification_accuracy_trackers_3[n].update(output.detach(), labels[n].detach(), paths[n])
 
             process = 0
             time = 0
@@ -487,6 +502,7 @@ def main(args):
         for n, k in enumerate(overlay_list_3.keys()):
             localization_trackers_3[n].export(os.path.join(output_dirs[f'attacked_minerror_SAM_2{k}'], 'localization_error.csv').replace('\\','/'))
             localization_trackers_3[n].print_output()
+            classification_accuracy_trackers_3[n].export(os.path.join(output_dirs[f'attacked_minerror_SAM_2{k}'], 'predictions.csv').replace('\\','/'))
             classification_accuracy_trackers_3[n].print_output()
 
 
@@ -495,9 +511,9 @@ if __name__ == '__main__':
                                      formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     parser.add_argument('--flow', default='all', choices=['clean', 'attack-img', 'attack-sam', 'all'],
                         type=str, help='multipass flow option')
-    parser.add_argument('--dataset_pth', default='./tiny-imagenet-200/val/images',
+    parser.add_argument('--dataset_pth', default='./cifar10',
                         type=str, help='path for validation dataset')
-    parser.add_argument('--output_root', default='./output_debug',
+    parser.add_argument('--output_root', default='./output_cifar',
                         type=str, help='root for output SAM directories')
     # Run settings
     parser.add_argument('--batch_size', default=1, type=int, help='batch size should be 1')
@@ -505,10 +521,15 @@ if __name__ == '__main__':
     parser.add_argument('--limit_output', action='store_true',
                         help='limits the number of images to pass')
     parser.add_argument('--visual_imagesize', default=128, type=int)
-    parser.add_argument('--dataset_size', default=100, type=int)
+    parser.add_argument('--dataset_size', default=10000, type=int)
     # SNN settings
-    parser.add_argument('--pretrainedmodel_pth', default='./pretrained/pretrained_tiny_t30.pth.tar',
+    parser.add_argument('--pretrainedmodel_pth_A', default='./pretrained/jeff_work/vgg11/cifar10vgg11_timestep30_lr0.1_epoch20_leak0.99_bsize32_v5_bestmodel.pth.tar',
                         type=str, help='path for pretrained model')
+    # parser.add_argument('--pretrainedmodel_pth_B', default='./pretrained/jeff_work/alif/cifar10alif_timestep30_lr0.1_epoch20_leak0.99_bsize64_v5_bestmodel.pth.tar',
+    #                 type=str, help='path for pretrained model')
+    parser.add_argument('--pretrainedmodel_pth_B', default='./pretrained/jeff_work/burst/cifar10burst_timestep30_lr0.1_epoch20_leak0.99_bsize64_v5_bestmodel.pth.tar',
+                type=str, help='path for pretrained model')
+    parser.add_argument('--arch', default='burst', type=str)
     parser.add_argument('--timesteps', default=30, type=float, help='timesteps')
     parser.add_argument('--leak_mem', default=0.99, type=float, help='leak_mem')
     parser.add_argument('--gamma', default=0.5, type=float, help='parameter for spike exponential function')
@@ -524,7 +545,8 @@ if __name__ == '__main__':
                         help='Reduce noise by taking first PC of cam_weights*activations')
     # Attack settings
     parser.add_argument('--g_mu', default=0., type=float, help='mean for gaussian noise generation')
-    parser.add_argument('--g_sigma', default=1., type=float, help='std for gaussian noise generation')
+    parser.add_argument('--g_sigma', default=0.5, type=float, help='std for gaussian noise generation')
+    parser.add_argument('--enhance_map', action='store_true' ,help='use transformation to increase quality of bright areas')
 
     args = parser.parse_args()
     main(args)

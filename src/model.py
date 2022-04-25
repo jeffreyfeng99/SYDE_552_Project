@@ -121,7 +121,7 @@ class BurstGen():
 
 class SNN_VGG11(nn.Module):
     def __init__(self, num_timestep=30, leak_mem=0.99, spike_code='poisson', T_max=30.0, T_min=2.0, N_max=5, alif=False,
-                        leak_thresh=0.99, delta_thresh=0.01):
+                        leak_thresh=0.99, delta_thresh=0.02):
         super(SNN_VGG11, self).__init__()
 
         self.img_size = 64
@@ -143,19 +143,23 @@ class SNN_VGG11(nn.Module):
         self.conv1 = nn.Conv2d(3, 64, kernel_size=3, stride=1, padding=1, bias=bias_flag)
         self.bn1_list = nn.ModuleList([nn.BatchNorm2d(64, eps=1e-4, momentum=0.1, affine=affine_flag) for i in range(self.batch_num)])
         self.pool1 = nn.AvgPool2d(kernel_size=2)
+        
         self.conv2 = nn.Conv2d(64, 128, kernel_size=3, stride=1, padding=1, bias=bias_flag)
         self.bn2_list = nn.ModuleList([nn.BatchNorm2d(128, eps=1e-4, momentum=0.1, affine=affine_flag) for i in range(self.batch_num)])
         self.pool2 = nn.AvgPool2d(kernel_size=2)
+        
         self.conv3 = nn.Conv2d(128, 256, kernel_size=3, stride=1, padding=1, bias=bias_flag)
         self.bn3_list = nn.ModuleList([nn.BatchNorm2d(256, eps=1e-4, momentum=0.1, affine=affine_flag) for i in range(self.batch_num)])
         self.conv4 = nn.Conv2d(256, 256, kernel_size=3, stride=1, padding=1, bias=bias_flag)
         self.bn4_list = nn.ModuleList([nn.BatchNorm2d(256, eps=1e-4, momentum=0.1, affine=affine_flag) for i in range(self.batch_num)])
         self.pool3 = nn.AvgPool2d(kernel_size=2)
+        
         self.conv5 = nn.Conv2d(256, 512, kernel_size=3, stride=1, padding=1, bias=bias_flag)
         self.bn5_list = nn.ModuleList([nn.BatchNorm2d(512, eps=1e-4, momentum=0.1, affine=affine_flag) for i in range(self.batch_num)])
         self.conv6 = nn.Conv2d(512, 512, kernel_size=3, stride=1, padding=1, bias=bias_flag)
         self.bn6_list = nn.ModuleList([nn.BatchNorm2d(512, eps=1e-4, momentum=0.1, affine=affine_flag) for i in range(self.batch_num)])
         self.pool4 = nn.AvgPool2d(kernel_size=2)
+        
         self.conv7 = nn.Conv2d(512, 512, kernel_size=3, stride=1, padding=1, bias=bias_flag)
         self.bn7_list = nn.ModuleList([nn.BatchNorm2d(512, eps=1e-4, momentum=0.1, affine=affine_flag) for i in range(self.batch_num)])
         self.conv8 = nn.Conv2d(512, 512, kernel_size=3, stride=1, padding=1, bias=bias_flag)
@@ -168,7 +172,7 @@ class SNN_VGG11(nn.Module):
         self.bnfc_list = nn.ModuleList(
             [nn.BatchNorm1d(4096, eps=1e-4, momentum=0.1, affine=affine_flag) for i in
              range(self.batch_num)])
-        self.fc2 = nn.Linear(4096, 200, bias=bias_flag)
+        self.fc2 = nn.Linear(4096, 10, bias=bias_flag)
 
         batchnormlist = [self.bn1_list, self.bn2_list, self.bn3_list, self.bn4_list, self.bn5_list,
                          self.bn6_list, self.bn7_list, self.bn8_list, self.bnfc_list]
@@ -207,7 +211,7 @@ class SNN_VGG11(nn.Module):
         mem_conv8 = Variable(torch.zeros(batch_size, 512, h// 16, w// 16).cuda(), requires_grad=True)
 
         mem_fc1 = torch.zeros(batch_size, 4096).cuda()
-        mem_fc2 = torch.zeros(batch_size, 200).cuda()
+        mem_fc2 = torch.zeros(batch_size, 10).cuda()
 
         thresh_conv1 = torch.ones(batch_size, 64, h, w).cuda()
         thresh_conv2 = torch.ones(batch_size, 128, h//2, w//2).cuda()
@@ -218,7 +222,7 @@ class SNN_VGG11(nn.Module):
         thresh_conv7 = torch.ones(batch_size, 512, h // 16, w// 16).cuda()
         thresh_conv8 = torch.ones(batch_size, 512, h// 16, w// 16).cuda()
         thresh_fc1 = torch.ones(batch_size, 4096).cuda()
-        thresh_fc2 = torch.ones(batch_size, 200).cuda()
+        thresh_fc2 = torch.ones(batch_size, 10).cuda()
 
         # TODO need args
         spike_gen = None

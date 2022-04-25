@@ -2,6 +2,8 @@ import torch
 import numpy as np
 import pandas as pd
 import cv2
+from skimage.metrics import structural_similarity as ssim
+from skimage.metrics import mean_squared_error
 
 class AverageMeter(object):
     """
@@ -15,12 +17,27 @@ class AverageMeter(object):
         self.avg = 0
         self.sum = 0
         self.count = 0
+        self.preds = []
+        self.labels = []
+        self.names = []
 
-    def update(self, val, n=1):
+    def update(self, pred, label, name, n=1):
+        val = accuracy(pred, label)[0]
         self.val = val
         self.sum += val * n
         self.count += n
         self.avg = self.sum / self.count
+
+        self.preds.append(np.argmax(pred.cpu().numpy()))
+        self.labels.append(label.cpu().numpy()[0])
+        self.names.append(name)
+
+    def export(self, output_file):
+        df = pd.DataFrame()
+        df['files'] = self.names
+        df['predictions'] = self.preds
+        df['labels'] = self.labels
+        df.to_csv(output_file, index=False)
     
     def print_output(self):  
         print("Accuracy: %s" % self.avg.cpu().numpy()[0])
@@ -41,7 +58,7 @@ def accuracy(outp, target, topk=(1,)):
             res.append(correct_k.mul_(100.0 / batch_size))
         return res
 
-def localization_error(sam_list, reference, save_image=None, eps=1e-8):
+def localization_error(sam_list, reference, save_image=None, eps=1e-2):
     errors = []
 
     # reference = cv2.resize(reference, dsize=(64, 64))
@@ -54,7 +71,10 @@ def localization_error(sam_list, reference, save_image=None, eps=1e-8):
         sam[sam==1.] = 1.-eps
         sam[sam==0.] = eps
 
-        error = -np.sum(reference*np.log(sam) + (1.-reference)*np.log(1.-sam))
+        # error = -np.sum(reference*np.log(sam) + (1.-reference)*np.log(1.-sam))
+        error = np.mean((reference-sam)**2)
+        # error = ssim(reference, sam)
+        # error = mean_squared_error(reference,sam)
         errors.append(error)
     
     if save_image is not None:
